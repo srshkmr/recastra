@@ -113,7 +113,7 @@ Uploads the recording to a server via HTTP POST. You can specify the form field 
 ## 🧪 Development
 
 ```bash
-git clone https://github.com/your-org/recastra.git
+git clone https://github.com/srshkmr/recastra.git
 cd recastra
 npm install
 npm run dev
@@ -296,4 +296,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=your-org/recastra&type=Date)](https://star-history.com/#your-org/recastra&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=srshkmr/recastra&type=Date)](https://star-history.com/#srshkmr/recastra&Date)
