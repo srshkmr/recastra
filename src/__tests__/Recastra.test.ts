@@ -34,14 +34,17 @@ describe('Recastra', () => {
   describe('init', () => {
     it('should initialize with default constraints', async () => {
       await recastra.init();
-      expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: true, video: true });
+      expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
+        audio: true,
+        video: true
+      });
       expect(recastra['stream']).not.toBeNull();
     });
 
     it('should initialize with custom constraints', async () => {
-      const constraints = { 
-        audio: { deviceId: 'test-audio' }, 
-        video: { width: 1280, height: 720 } 
+      const constraints = {
+        audio: { deviceId: 'test-audio' },
+        video: { width: 1280, height: 720 }
       };
       await recastra.init(constraints);
       expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith(constraints);
@@ -50,8 +53,10 @@ describe('Recastra', () => {
 
     it('should throw error if getUserMedia fails', async () => {
       // Mock getUserMedia to reject
-      (navigator.mediaDevices.getUserMedia as jest.Mock).mockRejectedValueOnce(new Error('Permission denied'));
-      
+      (navigator.mediaDevices.getUserMedia as jest.Mock).mockRejectedValueOnce(
+        new Error('Permission denied')
+      );
+
       await expect(recastra.init()).rejects.toThrow('Failed to initialize media stream');
     });
   });
@@ -157,13 +162,13 @@ describe('Recastra', () => {
         download: '',
         click: jest.fn()
       };
-      
+
       document.createElement = jest.fn().mockReturnValue(mockAnchor);
       document.body.appendChild = jest.fn();
       document.body.removeChild = jest.fn();
-      
+
       recastra.save('test.webm');
-      
+
       expect(URL.createObjectURL).toHaveBeenCalled();
       expect(mockAnchor.download).toBe('test.webm');
       expect(mockAnchor.click).toHaveBeenCalled();
@@ -190,7 +195,9 @@ describe('Recastra', () => {
 
     it('should throw error if upload is called without recording', async () => {
       const uninitializedRecastra = new Recastra();
-      await expect(uninitializedRecastra.upload('https://example.com/upload')).rejects.toThrow('No recording available');
+      await expect(uninitializedRecastra.upload('https://example.com/upload')).rejects.toThrow(
+        'No recording available'
+      );
     });
   });
 
@@ -199,9 +206,9 @@ describe('Recastra', () => {
       await recastra.init();
       const mockTrack = recastra['stream']!.getTracks()[0];
       const stopSpy = jest.spyOn(mockTrack, 'stop');
-      
+
       recastra.dispose();
-      
+
       expect(stopSpy).toHaveBeenCalled();
       expect(recastra['stream']).toBeNull();
       expect(recastra['mediaRecorder']).toBeNull();

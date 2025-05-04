@@ -1,5 +1,21 @@
 // Mock the MediaRecorder API and other browser APIs for testing
 if (typeof window !== 'undefined') {
+  // Mock console methods to suppress output during tests
+  // This prevents console.error and console.warn messages from appearing in test output
+  // while still allowing the tests to verify error handling behavior.
+  // These messages are expected during tests that intentionally trigger error conditions,
+  // such as testing permission denied errors or unsupported MIME types.
+  const originalConsoleError = console.error;
+  const originalConsoleWarn = console.warn;
+
+  console.error = jest.fn();
+  console.warn = jest.fn();
+
+  // Restore original console methods after all tests are complete
+  afterAll(() => {
+    console.error = originalConsoleError;
+    console.warn = originalConsoleWarn;
+  });
   // Mock MediaRecorder
   class MockMediaRecorder {
     static isTypeSupported(type) {

@@ -1,0 +1,120 @@
+#!/bin/sh
+
+# Get the commit message file path from the command line arguments
+COMMIT_MSG_FILE=$1
+
+if [ -z "$COMMIT_MSG_FILE" ]; then
+  echo "Error: No commit message file path provided."
+  exit 1
+fi
+
+# Read the commit message from the file
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Skip merge commits
+if [[ "$COMMIT_MSG" == Merge* ]]; then
+  exit 0
+fi
+
+# Define the conventional commit types
+VALID_TYPES="build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test"
+
+# Parse the commit message header
+HEADER=$(echo "$COMMIT_MSG" | head -n 1)
+
+# Check if the header matches the conventional commit format
+if ! echo "$HEADER" | grep -qE "^($VALID_TYPES)(\([a-zA-Z0-9_-]+\))?!?: .+$"; then
+  echo "Error: Commit message format is invalid.
+
+  The commit message should follow the conventional commit format:
+  type(scope?): subject
+
+  Example: feat(auth): add login functionality
+
+  Valid types: build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test"
+  exit 1
+fi
+
+# Extract the type and subject
+TYPE=$(echo "$HEADER" | sed -E 's/^([a-z]+)(\([^)]+\))?!?: .+$/\1/')
+SUBJECT=$(echo "$HEADER" | sed -E 's/^[a-z]+(\([^)]+\))?!?: (.+)$/\2/')
+
+# Validate type
+if ! echo "$TYPE" | grep -qE "^($VALID_TYPES)$"; then
+  echo "Error: Commit type \"$TYPE\" is not allowed.
+
+  Valid types: build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test"
+  exit 1
+fi
+
+# Validate subject case (should not be sentence-case, start-case, pascal-case, or upper-case)
+FIRST_CHAR=$(echo "$SUBJECT" | cut -c1)
+FIRST_CHAR_UPPER=$(echo "$FIRST_CHAR" | tr '[:lower:]' '[:upper:]')
+if [ "$FIRST_CHAR" = "$FIRST_CHAR_UPPER" ]; then
+  echo "Error: Subject must not be in sentence-case, start-case, pascal-case, or upper-case.
+
+  Bad: $SUBJECT
+  Good: $(echo "${SUBJECT:0:1}" | tr '[:upper:]' '[:lower:]')${SUBJECT:1}"
+  exit 1
+fi
+
+# Validate subject is not empty
+if [ -z "$SUBJECT" ]; then
+  echo "Error: Subject cannot be empty."
+  exit 1
+fi
+
+# Validate subject does not end with a period
+if [ "$(echo "$SUBJECT" | tail -c 2)" = "." ]; then
+  echo "Error: Subject must not end with a period."
+  exit 1
+fi
+
+# Validate header length
+if [ ${#HEADER} -gt 100 ]; then
+  echo "Error: Header length must not exceed 100 characters. Current length: ${#HEADER}"
+  exit 1
+fi
+
+# Validate body and footer format
+LINES=$(echo "$COMMIT_MSG" | wc -l)
+if [ $LINES -gt 1 ]; then
+  # Check if there's a blank line after the header
+  SECOND_LINE=$(echo "$COMMIT_MSG" | sed -n '2p')
+  if [ -n "$SECOND_LINE" ]; then
+    echo "Error: The line after the header must be blank."
+    exit 1
+  fi
+
+  # Check body line length
+  echo "$COMMIT_MSG" | tail -n +3 | while IFS= read -r line; do
+    if [ -n "$line" ] && [ ${#line} -gt 100 ] && ! [[ "$line" == BREAKING\ CHANGE:* ]]; then
+      echo "Error: Body lines must not exceed 100 characters. Found line with ${#line} characters: \"$line\""
+      exit 1
+    fi
+  done
+
+  # Check footer format
+  FOOTER_LINE=$(echo "$COMMIT_MSG" | grep -n "^BREAKING CHANGE:" | cut -d: -f1)
+  if [ -n "$FOOTER_LINE" ]; then
+    # Check if there's a blank line before the footer
+    PREV_LINE=$((FOOTER_LINE - 1))
+    PREV_LINE_CONTENT=$(echo "$COMMIT_MSG" | sed -n "${PREV_LINE}p")
+    if [ -n "$PREV_LINE_CONTENT" ]; then
+      echo "Error: The line before the footer must be blank."
+      exit 1
+    fi
+
+    # Check footer line length
+    echo "$COMMIT_MSG" | tail -n +$FOOTER_LINE | while IFS= read -r line; do
+      if [ ${#line} -gt 100 ]; then
+        echo "Error: Footer lines must not exceed 100 characters. Found line with ${#line} characters: \"$line\""
+        exit 1
+      fi
+    done
+  fi
+fi
+
+# If we got here, the commit message is valid
+echo "Commit message validation passed!"
+exit 0

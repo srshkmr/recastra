@@ -159,6 +159,118 @@ npm run format
 
 Recastra is framework-agnostic and can be used with any JavaScript framework:
 
+### Plain HTML
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recastra HTML Example</title>
+  <script src="https://unpkg.com/recastra/dist/index.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    button {
+      padding: 10px 15px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    #status {
+      margin-top: 20px;
+      font-style: italic;
+    }
+    #preview {
+      width: 100%;
+      height: 300px;
+      background: #f0f0f0;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Recastra Recording Demo</h1>
+
+  <div>
+    <button id="startBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop Recording</button>
+  </div>
+
+  <div id="status">Ready to record</div>
+  <video id="preview" autoplay muted></video>
+
+  <script>
+    // Access the Recastra constructor from the global scope
+    const { Recastra } = window.Recastra;
+
+    // DOM elements
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const status = document.getElementById('status');
+    const preview = document.getElementById('preview');
+
+    // Initialize recorder
+    let recorder = null;
+    let isRecording = false;
+
+    async function initRecorder() {
+      try {
+        recorder = new Recastra();
+        await recorder.init({ audio: true, video: true });
+
+        // Display the camera preview
+        preview.srcObject = recorder.getStream();
+
+        status.textContent = 'Recorder initialized. Ready to start.';
+        startBtn.disabled = false;
+      } catch (error) {
+        status.textContent = `Error: ${error.message}`;
+        console.error('Initialization error:', error);
+      }
+    }
+
+    // Start recording
+    startBtn.addEventListener('click', () => {
+      if (recorder && !isRecording) {
+        recorder.start();
+        isRecording = true;
+        status.textContent = 'Recording...';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      }
+    });
+
+    // Stop recording
+    stopBtn.addEventListener('click', async () => {
+      if (recorder && isRecording) {
+        const blob = await recorder.stop();
+        isRecording = false;
+        status.textContent = `Recording stopped. Size: ${(blob.size / 1024 / 1024).toFixed(2)} MB`;
+        recorder.save('html-recording.webm');
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    });
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', initRecorder);
+
+    // Clean up on page unload
+    window.addEventListener('beforeunload', () => {
+      if (recorder) {
+        recorder.dispose();
+      }
+    });
+  </script>
+</body>
+</html>
+```
+
 ### React
 
 ```tsx
@@ -282,7 +394,7 @@ For older browsers, consider using a polyfill or fallback mechanism.
 
 ## 📄 License
 
-MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License—see the [LICENSE](LICENSE) file for details.
 
 ## 👥 Contributing
 
