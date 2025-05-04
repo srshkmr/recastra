@@ -1,0 +1,36 @@
+# Source files
+src/
+examples/
+
+# Development files
+.husky/
+.eslintrc.js
+.prettierrc
+jest.config.js
+jest.setup.js
+tsconfig.json
+
+# Test files
+**/*.test.ts
+**/__tests__/
+
+# Coverage reports
+coverage/
+
+# Editor files
+.vscode/
+.idea/
+
+# Git files
+.git/
+.gitignore
+.aiignore
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependency directories
+node_modules/
