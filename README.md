@@ -155,6 +155,17 @@ npm run lint
 npm run format
 ```
 
+### Local Development Server
+
+When testing ES modules locally, browsers enforce CORS policies that prevent loading modules from `file://` URLs. To avoid this issue, use the included development server:
+
+```bash
+# Start a local development server
+npm run serve
+```
+
+This will start an HTTP server and automatically open your browser. You can then access the example HTML files without CORS errors.
+
 ## 🔌 Framework Integration
 
 Recastra is framework-agnostic and can be used with any JavaScript framework:
