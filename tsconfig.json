@@ -15,8 +15,12 @@
     "lib": ["dom", "es2018"],
     "sourceMap": true,
     "incremental": true,
-    "tsBuildInfoFile": "./.tsbuildinfo"
+    "tsBuildInfoFile": "./.tsbuildinfo",
+    "noEmit": false
   },
-  "include": ["src/**/*", "src/**/*.test.ts"],
-  "exclude": ["node_modules", "dist"]
+  "files": [
+    "./src/Recastra.ts",
+    "./src/index.ts"
+  ],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/__tests__/**"]
 }
