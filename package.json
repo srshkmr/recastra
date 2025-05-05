@@ -1,6 +1,6 @@
 {
   "name": "@srshkmr02/recastra",
-  "version": "0.1.21",
+  "version": "0.2.0",
   "description": "A lightweight TypeScript plugin for recording audio and video using WebRTC",
   "type": "module",
   "main": "dist/index.js",
