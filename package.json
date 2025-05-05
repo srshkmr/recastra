@@ -9,8 +9,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "tsc src/index.ts src/Recastra.ts --outDir dist --declaration",
+    "dev": "tsc src/index.ts src/Recastra.ts --outDir dist --declaration --watch",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.ts",
