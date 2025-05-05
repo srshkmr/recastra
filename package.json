@@ -1,10 +1,21 @@
 {
-  "name": "recastra",
-  "version": "0.1.0",
+  "name": "@srshkmr02/recastra",
+  "version": "0.1.9",
   "description": "A lightweight TypeScript plugin for recording audio and video using WebRTC",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/srshkmr/recastra.git"
+  },
+  "bugs": {
+    "url": "https://github.com/srshkmr/recastra/issues"
+  },
+  "homepage": "https://github.com/srshkmr/recastra#readme",
   "files": [
     "dist"
   ],
@@ -15,7 +26,8 @@
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "publish:public": "npm publish --access public"
   },
   "keywords": [
     "webrtc",
