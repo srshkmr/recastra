@@ -7,6 +7,8 @@ describe('FileManager', () => {
     fileManager = new FileManager();
     // Clear all mocks before each test
     jest.clearAllMocks();
+    // Set up fake timers
+    jest.useFakeTimers();
   });
 
   describe('constructor', () => {
@@ -185,55 +187,14 @@ describe('FileManager', () => {
       const mockMimeType = 'audio/wav';
       const fileName = 'recording-audio.wav';
 
-      // Mock AudioContext and its methods
-      const mockSourceNode = {
-        connect: jest.fn()
-      };
-
-      const mockDestinationNode = {
-        stream: {
-          getAudioTracks: jest.fn().mockReturnValue([{ kind: 'audio' }])
-        }
-      };
-
-      const mockAudioContext = {
-        createMediaElementSource: jest.fn().mockReturnValue(mockSourceNode),
-        createMediaStreamDestination: jest.fn().mockReturnValue(mockDestinationNode),
-        close: jest.fn().mockResolvedValue(undefined)
-      };
-
-      // Mock global AudioContext constructor
-      global.AudioContext = jest
-        .fn()
-        .mockImplementation(() => mockAudioContext) as unknown as typeof AudioContext;
+      // Mock Blob constructor
+      const mockAudioBlob = new Blob([mockBlob], { type: 'audio/wav' });
+      global.Blob = jest.fn().mockImplementation(() => mockAudioBlob) as unknown as typeof Blob;
 
       // Mock URL.createObjectURL
       const mockUrl = 'mock-url';
       URL.createObjectURL = jest.fn().mockReturnValue(mockUrl);
       URL.revokeObjectURL = jest.fn();
-
-      // Mock Audio constructor
-      const mockAudio = {
-        src: '',
-        play: jest.fn(),
-        pause: jest.fn(),
-        onended: null,
-        onplay: null
-      };
-      global.Audio = jest.fn().mockImplementation(() => mockAudio) as unknown as typeof Audio;
-
-      // Mock MediaRecorder
-      const mockMediaRecorder = {
-        start: jest.fn(),
-        stop: jest.fn(),
-        ondataavailable: null,
-        onstop: null,
-        state: 'recording'
-      };
-      global.MediaRecorder = jest
-        .fn()
-        .mockImplementation(() => mockMediaRecorder) as unknown as typeof MediaRecorder;
-      global.MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
 
       // Mock document.createElement and appendChild
       const mockAnchor = {
@@ -249,29 +210,25 @@ describe('FileManager', () => {
       // Extract audio
       fileManager['extractAudioFromRecording'](mockBlob, mockMimeType, fileName);
 
-      // Verify that AudioContext was created
-      expect(global.AudioContext).toHaveBeenCalled();
+      // Verify that a new Blob was created with the correct MIME type
+      expect(global.Blob).toHaveBeenCalledWith([mockBlob], { type: 'audio/wav' });
 
-      // Verify that URL.createObjectURL was called with the blob
-      expect(URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
+      // Verify that URL.createObjectURL was called with the new blob
+      expect(URL.createObjectURL).toHaveBeenCalledWith(mockAudioBlob);
 
-      // Verify that Audio was created and configured
-      expect(global.Audio).toHaveBeenCalled();
-      expect(mockAudio.src).toBe(mockUrl);
+      // Verify that the anchor was created and configured
+      expect(document.createElement).toHaveBeenCalledWith('a');
+      expect(mockAnchor.href).toBe(mockUrl);
+      expect(mockAnchor.download).toBe(fileName);
 
-      // Verify that MediaRecorder was created and started
-      expect(global.MediaRecorder).toHaveBeenCalled();
-      expect(mockMediaRecorder.start).toHaveBeenCalled();
+      // Verify that the anchor was appended to the document body and clicked
+      expect(document.body.appendChild).toHaveBeenCalledWith(mockAnchor);
+      expect(mockAnchor.click).toHaveBeenCalled();
 
-      // Verify that the audio was played
-      expect(mockAudio.play).toHaveBeenCalled();
-
-      // Simulate the audio ending
-      mockMediaRecorder.onstop = jest.fn();
-      mockAudio.onended();
-
-      // Verify that the MediaRecorder was stopped
-      expect(mockMediaRecorder.stop).toHaveBeenCalled();
+      // Verify that the anchor was removed and the URL was revoked
+      jest.runAllTimers();
+      expect(document.body.removeChild).toHaveBeenCalledWith(mockAnchor);
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith(mockUrl);
     });
   });
 
@@ -282,20 +239,28 @@ describe('FileManager', () => {
       const mockUrl = 'https://example.com/upload';
       const mockFormFieldName = 'file';
 
+      // Create a mock FormData instance
+      const mockFormData = {
+        append: jest.fn()
+      };
+
+      // Mock FormData constructor
+      global.FormData = jest.fn().mockImplementation(() => mockFormData);
+
       // Mock fetch
       const mockResponse = { ok: true };
       global.fetch = jest.fn().mockResolvedValue(mockResponse);
-      global.FormData = jest.fn().mockImplementation(() => ({
-        append: jest.fn()
-      }));
 
       // Upload the recording
       const response = await fileManager.upload(mockBlob, mockUrl, mockFormFieldName);
 
+      // Verify that FormData.append was called with the correct parameters
+      expect(mockFormData.append).toHaveBeenCalledWith(mockFormFieldName, mockBlob);
+
       // Verify that fetch was called with the correct parameters
       expect(global.fetch).toHaveBeenCalledWith(mockUrl, {
         method: 'POST',
-        body: expect.any(FormData)
+        body: mockFormData
       });
 
       // Verify that the response was returned

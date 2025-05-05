@@ -323,12 +323,16 @@ describe('Recastra', () => {
       const mockBlob = new Blob(['test data']);
       mockRecordingManager.getRecordingBlob.mockReturnValue(mockBlob);
       mockRecordingManager.getState.mockReturnValue('inactive');
+      mockFileManager.save.mockReturnValue(mockBlob);
 
       // Save the recording
-      recastra.save('test.webm');
+      const returnedBlob = recastra.save('test.webm');
 
       // Verify that save was called on the file manager
       expect(mockFileManager.save).toHaveBeenCalledWith(mockBlob, 'video/webm', 'test.webm');
+
+      // Verify that the blob was returned
+      expect(returnedBlob).toBe(mockBlob);
     });
 
     it('should throw error if no recording is available', () => {
@@ -344,13 +348,18 @@ describe('Recastra', () => {
     it('should save the recording as audio', () => {
       // Mock the getRecordingBlob method
       const mockBlob = new Blob(['test data']);
+      const mockAudioBlob = new Blob(['audio data']);
       mockRecordingManager.getRecordingBlob.mockReturnValue(mockBlob);
+      mockFileManager.saveAsAudio.mockReturnValue(mockAudioBlob);
 
       // Save the recording as audio
-      recastra.saveAsAudio('test-audio.wav');
+      const returnedBlob = recastra.saveAsAudio('test-audio.wav');
 
       // Verify that saveAsAudio was called on the file manager
       expect(mockFileManager.saveAsAudio).toHaveBeenCalledWith(mockBlob, 'test-audio.wav');
+
+      // Verify that the audio blob was returned
+      expect(returnedBlob).toBe(mockAudioBlob);
     });
 
     it('should throw error if no recording is available', () => {
@@ -420,6 +429,139 @@ describe('Recastra', () => {
       // Verify that getVideoDevices was called on the stream manager
       expect(mockStreamManager.getVideoDevices).toHaveBeenCalled();
       expect(devices).toBe(mockDevices);
+    });
+  });
+
+  describe('replay', () => {
+    beforeEach(() => {
+      // Mock document.createElement
+      document.createElement = jest.fn().mockReturnValue({
+        addEventListener: jest.fn(),
+        style: {}
+      });
+
+      // Mock URL.createObjectURL
+      URL.createObjectURL = jest.fn().mockReturnValue('blob:test-url');
+      URL.revokeObjectURL = jest.fn();
+    });
+
+    it('should create a video element with default options', () => {
+      // Mock the getRecordingBlob method
+      const mockBlob = new Blob(['test data']);
+      mockRecordingManager.getRecordingBlob.mockReturnValue(mockBlob);
+
+      // Mock document.createElement for video
+      const mockVideo = {
+        src: '',
+        controls: false,
+        autoplay: false,
+        muted: false,
+        loop: false,
+        width: 0,
+        height: 0,
+        addEventListener: jest.fn()
+      };
+      document.createElement = jest.fn().mockReturnValue(mockVideo);
+
+      // Replay the recording
+      const video = recastra.replay();
+
+      // Verify that getRecordingBlob was called
+      expect(mockRecordingManager.getRecordingBlob).toHaveBeenCalled();
+
+      // Verify that URL.createObjectURL was called with the blob
+      expect(URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
+
+      // Verify that document.createElement was called with 'video'
+      expect(document.createElement).toHaveBeenCalledWith('video');
+
+      // Verify that the video element was configured with default options
+      expect(video.src).toBe('blob:test-url');
+      expect(video.controls).toBe(true);
+      expect(video.autoplay).toBe(false);
+      expect(video.muted).toBe(false);
+      expect(video.loop).toBe(false);
+
+      // Verify that event listeners were added
+      expect(video.addEventListener).toHaveBeenCalledWith('loadeddata', expect.any(Function));
+      expect(video.addEventListener).toHaveBeenCalledWith('remove', expect.any(Function));
+    });
+
+    it('should create a video element with custom options', () => {
+      // Mock the getRecordingBlob method
+      const mockBlob = new Blob(['test data']);
+      mockRecordingManager.getRecordingBlob.mockReturnValue(mockBlob);
+
+      // Mock document.createElement for video
+      const mockVideo = {
+        src: '',
+        controls: false,
+        autoplay: false,
+        muted: false,
+        loop: false,
+        width: 0,
+        height: 0,
+        addEventListener: jest.fn()
+      };
+      document.createElement = jest.fn().mockReturnValue(mockVideo);
+
+      // Custom options
+      const options = {
+        width: 640,
+        height: 480,
+        controls: false,
+        autoplay: true,
+        muted: true,
+        loop: true
+      };
+
+      // Replay the recording with custom options
+      const video = recastra.replay(undefined, options);
+
+      // Verify that the video element was configured with custom options
+      expect(video.src).toBe('blob:test-url');
+      expect(video.controls).toBe(false);
+      expect(video.autoplay).toBe(true);
+      expect(video.muted).toBe(true);
+      expect(video.loop).toBe(true);
+      expect(video.width).toBe(640);
+      expect(video.height).toBe(480);
+    });
+
+    it('should append the video element to a container', () => {
+      // Mock the getRecordingBlob method
+      const mockBlob = new Blob(['test data']);
+      mockRecordingManager.getRecordingBlob.mockReturnValue(mockBlob);
+
+      // Mock document.createElement for video
+      const mockVideo = {
+        src: '',
+        controls: false,
+        autoplay: false,
+        muted: false,
+        loop: false,
+        addEventListener: jest.fn()
+      };
+      document.createElement = jest.fn().mockReturnValue(mockVideo);
+
+      // Mock container
+      const mockContainer = {
+        appendChild: jest.fn()
+      };
+
+      // Replay the recording with a container
+      const video = recastra.replay(mockContainer as unknown as HTMLElement);
+
+      // Verify that the video element was appended to the container
+      expect(mockContainer.appendChild).toHaveBeenCalledWith(video);
+    });
+
+    it('should throw error if no recording is available', () => {
+      // Mock the getRecordingBlob method to return null
+      mockRecordingManager.getRecordingBlob.mockReturnValue(null);
+
+      // Replay the recording
+      expect(() => recastra.replay()).toThrow('No recording available');
     });
   });
 

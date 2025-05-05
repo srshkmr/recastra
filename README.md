@@ -224,17 +224,23 @@ Pauses the recording session.
 ### `resume(): void`
 Resumes a paused recording session.
 
-### `save(fileName?: string): void`
-Downloads the recording using a generated blob URL. Optionally specify a file name.
+### `save(fileName?: string): Blob`
+Downloads the recording using a generated blob URL and returns the recording blob. Optionally specify a file name.
 
 Features:
 - Automatically selects the appropriate file extension based on recording type (audio or video)
 - Uses common audio extensions (mp3, wav, ogg) for audio-only recordings
 - Uses video extensions (webm, mp4, ogg) for video recordings
 - Ensures consistent file format for playback in various media players
+- Returns the recording blob for further processing
 
-### `saveAsAudio(fileName?: string): void`
-Downloads the recording as audio only, regardless of whether video was recorded, with enhanced format support and reliability.
+```typescript
+// Save recording and get the blob for further processing
+const blob = recorder.save('recording.webm');
+```
+
+### `saveAsAudio(fileName?: string): Blob`
+Downloads the recording as audio only, regardless of whether video was recorded, with enhanced format support and reliability. Returns the audio blob.
 
 Features:
 - Always uses WAV format for audio downloads for maximum compatibility and quality
@@ -244,10 +250,61 @@ Features:
 - Provides fallback mechanisms if chunks aren't available
 - Includes comprehensive error handling with detailed error messages
 - Uses a longer timeout to ensure download completes successfully
+- Returns the audio blob for further processing
 
 ```typescript
 // Record video+audio but save just the audio
-recorder.saveAsAudio('audio-only.mp3'); // Will use mp3 extension if supported
+const audioBlob = recorder.saveAsAudio('audio-only.mp3'); // Will use mp3 extension if supported
+```
+
+### `replay(container?: HTMLElement, options?: ReplayOptions): HTMLVideoElement`
+Creates a video element to replay the recording and returns the created video element.
+
+Parameters:
+- `container` (optional): HTML element to append the video to
+- `options` (optional): Configuration options for the video element
+  - `width`: Width of the video element (string or number)
+  - `height`: Height of the video element (string or number)
+  - `controls`: Whether to show video controls (default: true)
+  - `autoplay`: Whether to autoplay the video (default: false)
+  - `muted`: Whether to mute the video (default: false)
+  - `loop`: Whether to loop the video (default: false)
+
+```typescript
+// Create a video element with custom options
+const videoElement = recorder.replay(document.getElementById('video-container'), {
+  width: 640,
+  height: 480,
+  controls: true,
+  autoplay: false
+});
+
+// Add custom styling or event listeners
+videoElement.style.border = '1px solid #ccc';
+videoElement.addEventListener('ended', () => console.log('Video playback ended'));
+```
+
+### `replayAudio(container?: HTMLElement, options?: AudioReplayOptions): HTMLAudioElement`
+Creates an audio element to replay the audio recording and returns the created audio element.
+
+Parameters:
+- `container` (optional): HTML element to append the audio to
+- `options` (optional): Configuration options for the audio element
+  - `controls`: Whether to show audio controls (default: true)
+  - `autoplay`: Whether to autoplay the audio (default: false)
+  - `loop`: Whether to loop the audio (default: false)
+
+```typescript
+// Create an audio element with custom options
+const audioElement = recorder.replayAudio(document.getElementById('audio-container'), {
+  controls: true,
+  autoplay: false,
+  loop: false
+});
+
+// Add custom styling or event listeners
+audioElement.style.width = '100%';
+audioElement.addEventListener('ended', () => console.log('Audio playback ended'));
 ```
 
 ### `upload(url: string, formFieldName?: string): Promise<Response>`

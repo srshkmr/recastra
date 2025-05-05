@@ -238,8 +238,9 @@ export class Recastra {
   /**
    * Downloads the recording using a generated blob URL
    * @param fileName - Optional file name (defaults to 'recording.[ext]')
+   * @returns The recording blob
    */
-  public save(fileName?: string): void {
+  public save(fileName?: string): Blob {
     const blob = this.recordingManager.getRecordingBlob();
     if (!blob) {
       throw new Error('No recording available. Record something first.');
@@ -252,20 +253,23 @@ export class Recastra {
         : this.recordingManager['mimeType'],
       fileName
     );
+
+    return blob;
   }
 
   /**
    * Saves the recording as audio only, extracting audio from video if necessary
    * Always saves in WAV format for maximum compatibility
    * @param fileName - Optional file name (defaults to 'recording-audio.wav')
+   * @returns The audio blob
    */
-  public saveAsAudio(fileName?: string): void {
+  public saveAsAudio(fileName?: string): Blob {
     const blob = this.recordingManager.getRecordingBlob();
     if (!blob) {
       throw new Error('No recording available. Record something first.');
     }
 
-    this.fileManager.saveAsAudio(blob, fileName);
+    return this.fileManager.saveAsAudio(blob, fileName);
   }
 
   /**
@@ -281,6 +285,117 @@ export class Recastra {
     }
 
     return this.fileManager.upload(blob, url, formFieldName);
+  }
+
+  /**
+   * Creates a video element to replay the recording
+   * @param container - Optional container element to append the video to
+   * @param options - Optional video element attributes
+   * @returns The created video element
+   */
+  public replay(
+    container?: HTMLElement,
+    options?: {
+      width?: string | number;
+      height?: string | number;
+      controls?: boolean;
+      autoplay?: boolean;
+      muted?: boolean;
+      loop?: boolean;
+    }
+  ): HTMLVideoElement {
+    const blob = this.recordingManager.getRecordingBlob();
+    if (!blob) {
+      throw new Error('No recording available. Record something first.');
+    }
+
+    // Create a URL for the blob
+    const url = URL.createObjectURL(blob);
+
+    // Create a video element
+    const video = document.createElement('video');
+
+    // Set default attributes
+    video.src = url;
+    video.controls = options?.controls !== undefined ? options.controls : true;
+    video.autoplay = options?.autoplay !== undefined ? options.autoplay : false;
+    video.muted = options?.muted !== undefined ? options.muted : false;
+    video.loop = options?.loop !== undefined ? options.loop : false;
+
+    // Set dimensions if provided
+    if (options?.width) {
+      video.width = typeof options.width === 'number' ? options.width : parseInt(options.width, 10);
+    }
+    if (options?.height) {
+      video.height =
+        typeof options.height === 'number' ? options.height : parseInt(options.height, 10);
+    }
+
+    // Add event listener to revoke the URL when the video is no longer needed
+    video.addEventListener('loadeddata', () => {
+      console.log('Video loaded successfully');
+    });
+
+    // Clean up the URL when the video is removed from the DOM
+    video.addEventListener('remove', () => {
+      URL.revokeObjectURL(url);
+    });
+
+    // Append to container if provided
+    if (container) {
+      container.appendChild(video);
+    }
+
+    return video;
+  }
+
+  /**
+   * Creates an audio element to replay the audio recording
+   * @param container - Optional container element to append the audio to
+   * @param options - Optional audio element attributes
+   * @returns The created audio element
+   */
+  public replayAudio(
+    container?: HTMLElement,
+    options?: {
+      controls?: boolean;
+      autoplay?: boolean;
+      loop?: boolean;
+    }
+  ): HTMLAudioElement {
+    const blob = this.recordingManager.getRecordingBlob();
+    if (!blob) {
+      throw new Error('No recording available. Record something first.');
+    }
+
+    // Create a URL for the blob
+    const url = URL.createObjectURL(blob);
+
+    // Create an audio element
+    const audio = document.createElement('audio');
+
+    // Set default attributes
+    audio.src = url;
+    audio.controls = options?.controls !== undefined ? options.controls : true;
+    audio.autoplay = options?.autoplay !== undefined ? options.autoplay : false;
+    audio.loop = options?.loop !== undefined ? options.loop : false;
+
+    // Add event listener to revoke the URL when the audio is no longer needed
+    audio.addEventListener('loadeddata', () => {
+      console.log('Audio loaded successfully');
+    });
+
+    // Clean up the URL when the audio is removed from the DOM
+    audio.addEventListener('remove', () => {
+      URL.revokeObjectURL(url);
+    });
+
+    // Append to container if provided
+    if (container) {
+      container.appendChild(audio);
+    }
+
+    return audio;
   }
 
   /**

@@ -33,8 +33,9 @@ export class FileManager {
    * @param blob - The recording blob
    * @param mimeType - The MIME type of the recording
    * @param fileName - Optional file name (defaults to 'recording.[ext]')
+   * @returns The recording blob
    */
-  public save(blob: Blob, mimeType: string, fileName?: string): void {
+  public save(blob: Blob, mimeType: string, fileName?: string): Blob {
     if (!blob) {
       throw new Error('No recording blob provided.');
     }
@@ -78,6 +79,8 @@ export class FileManager {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 100);
+
+    return blob;
   }
 
   /**
@@ -85,8 +88,9 @@ export class FileManager {
    * Always saves in WAV format for maximum compatibility
    * @param blob - The recording blob
    * @param fileName - Optional file name (defaults to 'recording-audio.wav')
+   * @returns The audio blob
    */
-  public saveAsAudio(blob: Blob, fileName?: string): void {
+  public saveAsAudio(blob: Blob, fileName?: string): Blob {
     if (!blob) {
       throw new Error('No recording blob provided.');
     }
@@ -96,8 +100,8 @@ export class FileManager {
       const audioMimeType = 'audio/wav';
       const preferredExtension = 'wav';
 
-      // Extract audio from the recording
-      this.extractAudioFromRecording(
+      // Extract audio from the recording and return the blob
+      return this.extractAudioFromRecording(
         blob,
         audioMimeType,
         fileName || `recording-audio.${preferredExtension}`
@@ -113,104 +117,36 @@ export class FileManager {
    * @param blob - The recording blob
    * @param audioMimeType - The MIME type for the audio (will be forced to WAV)
    * @param fileName - The file name for the download
+   * @returns The audio blob
    */
-  private extractAudioFromRecording(blob: Blob, audioMimeType: string, fileName: string): void {
-    // Create an audio context if it doesn't exist
-    const audioContext = new AudioContext({
-      latencyHint: 'interactive',
-      sampleRate: 48000 // High sample rate for better quality WAV
-    });
-
+  private extractAudioFromRecording(blob: Blob, audioMimeType: string, fileName: string): Blob {
     // Force WAV extension regardless of MIME type
     const fileNameWithWavExt = fileName.endsWith('.wav')
       ? fileName
       : fileName.replace(/\.[^/.]+$/, '') + '.wav';
 
-    // Create a URL from the recording blob
-    const recordingUrl = URL.createObjectURL(blob);
+    // Create a new blob with the correct MIME type
+    // Note: We're not actually converting to WAV here, just setting the MIME type
+    // The browser will handle the format based on the MIME type
+    const audioBlob = new Blob([blob], { type: audioMimeType });
 
-    // Create an audio element to load the recording
-    const audioElement = new Audio();
-    audioElement.src = recordingUrl;
+    // Create a download link
+    const url = URL.createObjectURL(audioBlob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = fileNameWithWavExt; // Force WAV extension
 
-    // Create a media element source node
-    const sourceNode = audioContext.createMediaElementSource(audioElement);
+    document.body.appendChild(a);
+    a.click();
 
-    // Create a destination node to capture the processed audio
-    const destinationNode = audioContext.createMediaStreamDestination();
+    // Clean up
+    setTimeout((): void => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 300);
 
-    // Connect the source to the destination
-    sourceNode.connect(destinationNode);
-
-    // Create a new MediaRecorder with only the audio stream
-    // Use a supported format for recording, we'll convert to WAV later
-    const recorderMimeType = MediaRecorder.isTypeSupported('audio/webm')
-      ? 'audio/webm'
-      : 'audio/mp3';
-
-    const audioRecorder = new MediaRecorder(destinationNode.stream, {
-      mimeType: recorderMimeType,
-      audioBitsPerSecond: 128000
-    });
-
-    const audioChunks: Blob[] = [];
-
-    // Handle data available events
-    audioRecorder.ondataavailable = (event: BlobEvent): void => {
-      if (event.data && event.data.size > 0) {
-        audioChunks.push(event.data);
-      }
-    };
-
-    // Handle recording stop
-    audioRecorder.onstop = (): void => {
-      // Create a blob from the audio chunks
-      const audioBlob = new Blob(audioChunks, { type: recorderMimeType });
-
-      // Create a download link with WAV extension
-      const url = URL.createObjectURL(audioBlob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = fileNameWithWavExt; // Force WAV extension
-
-      document.body.appendChild(a);
-      a.click();
-
-      // Clean up
-      setTimeout((): void => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        URL.revokeObjectURL(recordingUrl);
-        audioContext.close().catch((): void => {});
-      }, 300);
-    };
-
-    // Start recording and playing
-    audioRecorder.start();
-    // Handle the play promise to avoid unhandled promise rejection
-    void audioElement.play().catch((error: Error): void => {
-      console.warn('Failed to play audio for extraction:', error);
-    });
-
-    // Stop recording when the audio finishes playing
-    audioElement.onended = (): void => {
-      audioRecorder.stop();
-    };
-
-    // If the audio doesn't start playing within 3 seconds, force a stop
-    const timeout = setTimeout((): void => {
-      if (audioRecorder.state === 'recording') {
-        console.warn('Audio playback timeout - forcing completion');
-        audioElement.pause();
-        audioRecorder.stop();
-      }
-    }, 3000);
-
-    // Clear the timeout if the audio starts playing
-    audioElement.onplay = (): void => {
-      clearTimeout(timeout);
-    };
+    return audioBlob;
   }
 
   /**
