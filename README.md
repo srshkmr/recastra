@@ -47,6 +47,8 @@ a.click();
 
 ### Recording Capabilities
 - 🎙️ Record audio and video using WebRTC
+- 🎙️ Audio-only recording mode for voice recordings with high-quality audio capture
+- 🔊 Adjustable audio volume boosting for clearer recordings
 - 🎥 Supports camera and microphone access
 - 📐 Choose video resolution (e.g., 720p, 1080p)
 - 🔄 Seamless recording continuity when input source changes
@@ -56,6 +58,9 @@ a.click();
 
 ### Device Support
 - 🎚️ Select input devices: microphone and camera
+- 🔍 Enumerate available audio and video devices
+- 🔄 Switch between different microphones without stopping video
+- 🔄 Switch between different cameras during recording
 - 🌐 Cross-browser support (Chrome, Firefox, Edge)
 - 🍏 Safari compatibility (with WebKit-specific constraints)
 - 🧩 Works with canvas and screen streams (e.g., screen sharing, canvas recording)
@@ -63,6 +68,7 @@ a.click();
 ### Export Options
 - 💾 Export video recordings as `webm` or `mp4`
 - 💾 Export audio recordings as `wav` or `mp3`
+- 🔊 Extract audio-only from video recordings
 - 🧾 Set MIME type for recording (e.g., `video/webm`, `audio/wav`)
 - 📁 Save to disk or upload to server
 
@@ -75,23 +81,139 @@ a.click();
 
 ## 🛠 API
 
+### Constructor Options
+
+```typescript
+interface RecastraOptions {
+  mimeType?: string;              // MIME type for recording (e.g., 'video/webm', 'audio/webm')
+  recordingOptions?: MediaRecorderOptions;  // Options for MediaRecorder
+  audioOnly?: boolean;            // Whether to record audio only (no video)
+  audioGain?: number;             // Audio gain level for volume boosting (1.0 is normal, higher values boost volume)
+}
+```
+
+The library automatically sets optimal defaults for audio recording, including:
+- Default audioBitsPerSecond of 128000 for high-quality audio
+- Frequent data collection (every 100ms) during recording for continuous audio capture
+- Enhanced audio quality settings for audio-only recordings (48kHz sample rate, 2 channels)
+- Optimized audio constraints (echoCancellation, noiseSuppression, autoGainControl)
+- Audio volume boosting (2.0x by default) for clearer recordings
+- Web Audio API processing for high-fidelity sound
+- Robust error handling and recovery mechanisms to prevent audio breakage
+
+### `constructor(options?: RecastraOptions)`
+Creates a new Recastra instance with optional configuration.
+
+```typescript
+// Audio-only recorder
+const audioRecorder = new Recastra({ audioOnly: true });
+
+// Video recorder with specific MIME type and options
+const videoRecorder = new Recastra({
+  mimeType: 'video/webm;codecs=vp9',
+  recordingOptions: { audioBitsPerSecond: 128000, videoBitsPerSecond: 2500000 }
+});
+
+// Recorder with boosted audio volume (2x normal volume)
+const loudRecorder = new Recastra({
+  audioGain: 2.0,
+  recordingOptions: { audioBitsPerSecond: 128000 }
+});
+```
+
 ### `init(): Promise<void>`
-Requests camera and microphone access from the user.
+Requests camera and microphone access from the user with optimized default settings.
 
 ### `init(constraints?: MediaStreamConstraints): Promise<void>`
-Initializes the stream with custom audio/video constraints (e.g., resolution, device selection).
+Initializes the stream with custom audio/video constraints (e.g., resolution, device selection). 
+
+Features:
+- Uses optimized audio settings based on recording type:
+  - For audio-only: 48kHz sample rate, 2 channels, with noise suppression
+  - For video: 44.1kHz sample rate, 2 channels, with standard processing
+- Automatically applies essential audio processing (echoCancellation, noiseSuppression, autoGainControl)
+- Includes timeout protection to prevent hanging if permissions aren't granted
+- Provides detailed error reporting for troubleshooting
+
+### `getAudioDevices(): Promise<MediaDeviceInfo[]>`
+Returns a list of available audio input devices. Useful for letting users select a specific microphone.
+
+```typescript
+const audioDevices = await recorder.getAudioDevices();
+console.log('Available microphones:', audioDevices);
+```
+
+### `getVideoDevices(): Promise<MediaDeviceInfo[]>`
+Returns a list of available video input devices. Useful for letting users select a specific camera.
+
+```typescript
+const videoDevices = await recorder.getVideoDevices();
+console.log('Available cameras:', videoDevices);
+```
 
 ### `setMimeType(type: string): void`
 Sets the MIME type to be used for recording (e.g., `video/webm`, `audio/webm`, `audio/wav`).
 
+### `setAudioGain(gain: number): Promise<void>`
+Sets the audio gain level for volume boosting. Values between 1.0 and 3.0 are recommended.
+
+```typescript
+// Boost audio volume by 2x
+await recorder.setAudioGain(2.0);
+
+// Reset to normal volume
+await recorder.setAudioGain(1.0);
+```
+
+Features:
+- Dynamically adjusts volume during recording without stopping
+- Uses Web Audio API for high-quality audio processing
+- Applies changes immediately to active recordings
+- Provides real-time volume control for better audio quality
+
 ### `start(): void`
-Begins recording the available streams.
+Begins recording the available streams with optimized settings for continuous audio capture.
+
+Features:
+- Uses a 100ms timeslice interval for frequent data collection to prevent audio gaps
+- Implements a heartbeat mechanism to detect and recover from stalled recordings
+- Provides automatic recovery from MediaRecorder errors with intelligent restart
+- Includes comprehensive error handling with detailed diagnostics
+- Optimizes recording settings based on content type (audio-only vs. video)
+- Monitors recording health continuously to prevent interruptions
 
 ### `stop(): Promise<Blob>`
-Stops the recording and returns a `Blob` of the media.
+Stops the recording and returns a `Blob` of the media with enhanced reliability.
 
-### `updateStream(constraints: MediaStreamConstraints): Promise<void>`
-Dynamically updates the recording stream with new audio/video constraints without stopping the current recording session. Useful for switching cameras or microphones during recording.
+Features:
+- Requests a final data chunk before stopping to ensure all audio is captured
+- Includes timeout protection to prevent hanging if MediaRecorder fails to stop
+- Provides comprehensive error handling with detailed error messages
+- Validates recording data before creating the final blob
+
+### `updateStream(constraints: MediaStreamConstraints, maintainVideo?: boolean): Promise<void>`
+Dynamically updates the recording stream with new audio/video constraints with enhanced continuity. The `maintainVideo` parameter (default: true) controls whether to maintain the video stream when changing audio inputs.
+
+Features:
+- Preserves recording continuity by maintaining previous audio chunks when switching sources
+- Properly removes existing audio tracks before adding new ones to prevent conflicts
+- Ensures explicit audio quality settings are applied when changing audio sources
+- Includes stabilization delays to ensure smooth transitions between audio sources
+- Provides comprehensive error handling with detailed error messages
+
+```typescript
+// Update just the audio source without stopping video
+await recorder.updateStream({ 
+  audio: { deviceId: { exact: 'new-microphone-id' } },
+  video: true
+});
+
+// Completely replace both audio and video
+await recorder.updateStream({
+  audio: { deviceId: { exact: 'new-microphone-id' } },
+  video: { deviceId: { exact: 'new-camera-id' } }
+}, false);
+```
 
 ### `getStream(): MediaStream`
 Returns the current active MediaStream being used for recording.
@@ -104,6 +226,29 @@ Resumes a paused recording session.
 
 ### `save(fileName?: string): void`
 Downloads the recording using a generated blob URL. Optionally specify a file name.
+
+Features:
+- Automatically selects the appropriate file extension based on recording type (audio or video)
+- Uses common audio extensions (mp3, wav, ogg) for audio-only recordings
+- Uses video extensions (webm, mp4, ogg) for video recordings
+- Ensures consistent file format for playback in various media players
+
+### `saveAsAudio(fileName?: string): void`
+Downloads the recording as audio only, regardless of whether video was recorded, with enhanced format support and reliability.
+
+Features:
+- Always uses WAV format for audio downloads for maximum compatibility and quality
+- Intelligently determines the appropriate file extension based on the selected format
+- Uses common audio extensions (mp3, wav, ogg) for better compatibility with media players
+- Maps MIME types to appropriate file extensions (audio/mp4 → mp3, audio/mpeg → mp3)
+- Provides fallback mechanisms if chunks aren't available
+- Includes comprehensive error handling with detailed error messages
+- Uses a longer timeout to ensure download completes successfully
+
+```typescript
+// Record video+audio but save just the audio
+recorder.saveAsAudio('audio-only.mp3'); // Will use mp3 extension if supported
+```
 
 ### `upload(url: string, formFieldName?: string): Promise<Response>`
 Uploads the recording to a server via HTTP POST. You can specify the form field name (defaults to "file").
@@ -118,6 +263,40 @@ cd recastra
 npm install
 npm run dev
 ```
+
+### Architecture
+
+Recastra is built with a modular architecture that separates concerns into specialized components:
+
+#### Core Components
+
+1. **MediaStreamManager**: Handles media stream initialization and device enumeration
+   - Manages access to camera and microphone
+   - Provides methods to enumerate available devices
+   - Handles stream updates and constraints
+
+2. **AudioProcessor**: Handles audio processing and gain control
+   - Processes audio streams to boost volume
+   - Applies audio filters and compression
+   - Manages Web Audio API integration
+
+3. **RecordingManager**: Handles recording operations
+   - Controls MediaRecorder lifecycle
+   - Manages recording state and data collection
+   - Implements error recovery mechanisms
+
+4. **FileManager**: Handles saving and uploading recordings
+   - Provides methods to save recordings to disk
+   - Extracts audio from video recordings
+   - Handles uploading to servers
+
+The main `Recastra` class acts as a facade that coordinates these components, providing a simple and consistent API while delegating the implementation details to the specialized components.
+
+This architecture provides several benefits:
+- **Separation of concerns**: Each component has a single responsibility
+- **Improved maintainability**: Changes to one component don't affect others
+- **Better testability**: Components can be tested in isolation
+- **Enhanced extensibility**: New features can be added by extending specific components
 
 ### Building
 
@@ -262,7 +441,27 @@ Recastra is framework-agnostic and can be used with any JavaScript framework:
         const blob = await recorder.stop();
         isRecording = false;
         status.textContent = `Recording stopped. Size: ${(blob.size / 1024 / 1024).toFixed(2)} MB`;
-        recorder.save('html-recording.webm');
+
+        // Create download buttons
+        const downloadDiv = document.createElement('div');
+        downloadDiv.style.marginTop = '10px';
+
+        // Video download button
+        const videoBtn = document.createElement('button');
+        videoBtn.textContent = 'Download Video';
+        videoBtn.onclick = () => recorder.save('html-recording.mp4');
+        downloadDiv.appendChild(videoBtn);
+
+        // Audio download button
+        const audioBtn = document.createElement('button');
+        audioBtn.textContent = 'Download Audio Only';
+        audioBtn.onclick = () => recorder.saveAsAudio('html-recording-audio.mp3');
+        audioBtn.style.marginLeft = '10px';
+        downloadDiv.appendChild(audioBtn);
+
+        // Add buttons to the page
+        status.parentNode.insertBefore(downloadDiv, status.nextSibling);
+
         startBtn.disabled = false;
         stopBtn.disabled = true;
       }
@@ -317,22 +516,47 @@ function RecordingComponent() {
     }
   };
 
+  const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
+
   const stopRecording = async () => {
     if (recorder && isRecording) {
       const blob = await recorder.stop();
+      setRecordingBlob(blob);
       setIsRecording(false);
-      recorder.save('react-recording.webm');
+    }
+  };
+
+  const downloadVideo = () => {
+    if (recorder && recordingBlob) {
+      recorder.save('react-recording.mp4');
+    }
+  };
+
+  const downloadAudio = () => {
+    if (recorder && recordingBlob) {
+      recorder.saveAsAudio('react-recording-audio.mp3');
     }
   };
 
   return (
     <div>
-      <button onClick={startRecording} disabled={isRecording || !recorder}>
-        Start Recording
-      </button>
-      <button onClick={stopRecording} disabled={!isRecording}>
-        Stop Recording
-      </button>
+      <div>
+        <button onClick={startRecording} disabled={isRecording || !recorder}>
+          Start Recording
+        </button>
+        <button onClick={stopRecording} disabled={!isRecording}>
+          Stop Recording
+        </button>
+      </div>
+
+      {recordingBlob && (
+        <div style={{ marginTop: '10px' }}>
+          <button onClick={downloadVideo}>Download Video</button>
+          <button onClick={downloadAudio} style={{ marginLeft: '10px' }}>
+            Download Audio Only
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -343,12 +567,21 @@ function RecordingComponent() {
 ```vue
 <template>
   <div>
-    <button @click="startRecording" :disabled="isRecording || !recorder">
-      Start Recording
-    </button>
-    <button @click="stopRecording" :disabled="!isRecording">
-      Stop Recording
-    </button>
+    <div>
+      <button @click="startRecording" :disabled="isRecording || !recorder">
+        Start Recording
+      </button>
+      <button @click="stopRecording" :disabled="!isRecording">
+        Stop Recording
+      </button>
+    </div>
+
+    <div v-if="recordingBlob" style="margin-top: 10px;">
+      <button @click="downloadVideo">Download Video</button>
+      <button @click="downloadAudio" style="margin-left: 10px;">
+        Download Audio Only
+      </button>
+    </div>
   </div>
 </template>
 
@@ -359,7 +592,8 @@ export default {
   data() {
     return {
       recorder: null,
-      isRecording: false
+      isRecording: false,
+      recordingBlob: null
     };
   },
   async mounted() {
@@ -383,8 +617,18 @@ export default {
     async stopRecording() {
       if (this.recorder && this.isRecording) {
         const blob = await this.recorder.stop();
+        this.recordingBlob = blob;
         this.isRecording = false;
-        this.recorder.save('vue-recording.webm');
+      }
+    },
+    downloadVideo() {
+      if (this.recorder && this.recordingBlob) {
+        this.recorder.save('vue-recording.mp4');
+      }
+    },
+    downloadAudio() {
+      if (this.recorder && this.recordingBlob) {
+        this.recorder.saveAsAudio('vue-recording-audio.mp3');
       }
     }
   }

@@ -40,7 +40,7 @@ export default [
     }
   },
   {
-    files: ['**/*.test.ts'],
+    files: ['**/*.test.ts', 'src/**/__tests__/**/*.d.ts'],
     plugins: {
       '@typescript-eslint': tsEsLintPlugin,
       prettier: prettierPlugin,
@@ -49,13 +49,14 @@ export default [
     languageOptions: {
       globals: {
         ...globals.browser,
-        ...globals.jest
+        ...globals.jest,
+        global: 'writable'
       },
       parser: tsEsLintParser,
       parserOptions: {
         ecmaVersion: 2018,
         sourceType: 'module',
-        project: './tsconfig.json',
+        project: './tsconfig.test.json',
         tsconfigRootDir: process.cwd()
       }
     },
@@ -63,9 +64,13 @@ export default [
       ...jestPlugin.configs.recommended.rules,
       'prettier/prettier': 'error',
       '@typescript-eslint/explicit-function-return-type': 'warn',
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'off', // Disable in test files
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/unbound-method': 'warn'
+      // Disable rules that are problematic in test files
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off'
     }
   },
   prettierFlat,

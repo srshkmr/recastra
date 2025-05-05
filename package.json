@@ -1,6 +1,6 @@
 {
   "name": "@srshkmr02/recastra",
-  "version": "0.1.9",
+  "version": "0.1.21",
   "description": "A lightweight TypeScript plugin for recording audio and video using WebRTC",
   "type": "module",
   "main": "dist/index.js",
@@ -40,6 +40,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^22.15.3",
     "@eslint/js": "^9.26.0",
     "@types/dom-mediacapture-record": "^1.0.22",
     "@types/jest": "^29.5.14",
