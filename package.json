@@ -1,6 +1,6 @@
 {
   "name": "@srshkmr02/recastra",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "A lightweight TypeScript plugin for recording audio and video using WebRTC",
   "type": "module",
   "main": "dist/index.js",
@@ -17,7 +17,9 @@
   },
   "homepage": "https://github.com/srshkmr/recastra#readme",
   "files": [
-    "dist"
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "!dist/**/*.js.map"
   ],
   "scripts": {
     "build": "tsc --project tsconfig.json",
@@ -56,6 +58,7 @@
     "jest-environment-jsdom": "^29.7.0",
     "lint-staged": "^15.5.1",
     "prettier": "^3.5.3",
+    "terser": "^5.29.2",
     "ts-jest": "^29.3.2",
     "typescript": "^5.8.3"
   },

@@ -321,6 +321,26 @@ npm install
 npm run dev
 ```
 
+### Package Size Optimization
+
+Recastra is designed to be lightweight while providing powerful recording capabilities. The package size has been optimized by:
+
+1. **Excluding source maps from the published package**: Source maps are useful for debugging but add approximately 25% to the package size. They are excluded from the published package using the "files" field in package.json.
+
+2. **Minimal runtime dependencies**: Recastra has zero runtime dependencies, relying only on native browser APIs.
+
+If you want to further reduce the package size for your application, consider:
+
+1. **Tree shaking**: Import only the specific components you need if your bundler supports tree shaking.
+
+2. **Minification**: Use a JavaScript minifier like Terser in your application build process.
+
+3. **Code splitting**: Load Recastra only when recording functionality is needed in your application.
+
+Current package size:
+- Compressed: ~18 kB
+- Unpacked: ~82 kB
+
 ### Architecture
 
 Recastra is built with a modular architecture that separates concerns into specialized components:
