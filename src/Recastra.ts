@@ -6,6 +6,9 @@ import { MediaStreamManager, MediaStreamManagerOptions } from './core/MediaStrea
 import { AudioProcessor, AudioProcessorOptions } from './core/AudioProcessor';
 import { RecordingManager, RecordingManagerOptions } from './core/RecordingManager';
 import { FileManager, FileManagerOptions } from './core/FileManager';
+import { validateBlob, validateStream } from './utils/validation';
+import { createVideoElement, createAudioElement, MediaElementOptions } from './utils/media';
+import { safeExecuteAsync } from './utils/error';
 
 /**
  * Interface for Recastra options
@@ -88,7 +91,7 @@ export class Recastra {
       video: true
     }
   ): Promise<void> {
-    try {
+    return safeExecuteAsync(async () => {
       // Initialize the stream
       let stream = await this.streamManager.initStream(constraints);
 
@@ -96,12 +99,7 @@ export class Recastra {
       if (stream.getAudioTracks().length > 0) {
         stream = this.audioProcessor.processAudioStream(stream);
       }
-    } catch (error) {
-      console.error('Error initializing Recastra:', error);
-      throw new Error(
-        `Failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
+    }, 'Error initializing Recastra');
   }
 
   /**
@@ -156,11 +154,9 @@ export class Recastra {
    */
   public start(): void {
     const stream = this.streamManager.getStream();
-    if (!stream) {
-      throw new Error('Stream not initialized. Call init() first.');
-    }
+    validateStream(stream, 'Stream not initialized. Call init() first.');
 
-    this.recordingManager.start(stream);
+    this.recordingManager.start(stream!);
   }
 
   /**
@@ -215,10 +211,8 @@ export class Recastra {
    */
   public getStream(): MediaStream {
     const stream = this.streamManager.getStream();
-    if (!stream) {
-      throw new Error('Stream not initialized. Call init() first.');
-    }
-    return stream;
+    validateStream(stream, 'Stream not initialized. Call init() first.');
+    return stream!;
   }
 
   /**
@@ -236,40 +230,39 @@ export class Recastra {
   }
 
   /**
-   * Downloads the recording using a generated blob URL
+   * Downloads the recording using a generated blob URL or just returns the blob
    * @param fileName - Optional file name (defaults to 'recording.[ext]')
+   * @param download - Whether to trigger download (defaults to true)
    * @returns The recording blob
    */
-  public save(fileName?: string): Blob {
+  public save(fileName?: string, download: boolean = true): Blob {
     const blob = this.recordingManager.getRecordingBlob();
-    if (!blob) {
-      throw new Error('No recording available. Record something first.');
-    }
+    validateBlob(blob, 'No recording available. Record something first.');
 
     this.fileManager.save(
-      blob,
+      blob!,
       this.recordingManager.getState() === 'inactive'
         ? 'video/webm'
         : this.recordingManager['mimeType'],
-      fileName
+      fileName,
+      download
     );
 
-    return blob;
+    return blob!;
   }
 
   /**
    * Saves the recording as audio only, extracting audio from video if necessary
    * Always saves in WAV format for maximum compatibility
    * @param fileName - Optional file name (defaults to 'recording-audio.wav')
-   * @returns The audio blob
+   * @param download - Whether to trigger download (defaults to true)
+   * @returns Promise resolving to the audio blob
    */
-  public saveAsAudio(fileName?: string): Blob {
+  public async saveAsAudio(fileName?: string, download: boolean = true): Promise<Blob> {
     const blob = this.recordingManager.getRecordingBlob();
-    if (!blob) {
-      throw new Error('No recording available. Record something first.');
-    }
+    validateBlob(blob, 'No recording available. Record something first.');
 
-    return this.fileManager.saveAsAudio(blob, fileName);
+    return this.fileManager.saveAsAudio(blob!, fileName, download);
   }
 
   /**
@@ -280,11 +273,9 @@ export class Recastra {
    */
   public async upload(url: string, formFieldName: string = 'file'): Promise<Response> {
     const blob = this.recordingManager.getRecordingBlob();
-    if (!blob) {
-      throw new Error('No recording available. Record something first.');
-    }
+    validateBlob(blob, 'No recording available. Record something first.');
 
-    return this.fileManager.upload(blob, url, formFieldName);
+    return this.fileManager.upload(blob!, url, formFieldName);
   }
 
   /**
@@ -293,60 +284,11 @@ export class Recastra {
    * @param options - Optional video element attributes
    * @returns The created video element
    */
-  public replay(
-    container?: HTMLElement,
-    options?: {
-      width?: string | number;
-      height?: string | number;
-      controls?: boolean;
-      autoplay?: boolean;
-      muted?: boolean;
-      loop?: boolean;
-    }
-  ): HTMLVideoElement {
+  public replay(container?: HTMLElement, options?: MediaElementOptions): HTMLVideoElement {
     const blob = this.recordingManager.getRecordingBlob();
-    if (!blob) {
-      throw new Error('No recording available. Record something first.');
-    }
+    validateBlob(blob, 'No recording available. Record something first.');
 
-    // Create a URL for the blob
-    const url = URL.createObjectURL(blob);
-
-    // Create a video element
-    const video = document.createElement('video');
-
-    // Set default attributes
-    video.src = url;
-    video.controls = options?.controls !== undefined ? options.controls : true;
-    video.autoplay = options?.autoplay !== undefined ? options.autoplay : false;
-    video.muted = options?.muted !== undefined ? options.muted : false;
-    video.loop = options?.loop !== undefined ? options.loop : false;
-
-    // Set dimensions if provided
-    if (options?.width) {
-      video.width = typeof options.width === 'number' ? options.width : parseInt(options.width, 10);
-    }
-    if (options?.height) {
-      video.height =
-        typeof options.height === 'number' ? options.height : parseInt(options.height, 10);
-    }
-
-    // Add event listener to revoke the URL when the video is no longer needed
-    video.addEventListener('loadeddata', () => {
-      console.log('Video loaded successfully');
-    });
-
-    // Clean up the URL when the video is removed from the DOM
-    video.addEventListener('remove', () => {
-      URL.revokeObjectURL(url);
-    });
-
-    // Append to container if provided
-    if (container) {
-      container.appendChild(video);
-    }
-
-    return video;
+    return createVideoElement(blob!, container, options);
   }
 
   /**
@@ -355,47 +297,11 @@ export class Recastra {
    * @param options - Optional audio element attributes
    * @returns The created audio element
    */
-  public replayAudio(
-    container?: HTMLElement,
-    options?: {
-      controls?: boolean;
-      autoplay?: boolean;
-      loop?: boolean;
-    }
-  ): HTMLAudioElement {
+  public replayAudio(container?: HTMLElement, options?: MediaElementOptions): HTMLAudioElement {
     const blob = this.recordingManager.getRecordingBlob();
-    if (!blob) {
-      throw new Error('No recording available. Record something first.');
-    }
+    validateBlob(blob, 'No recording available. Record something first.');
 
-    // Create a URL for the blob
-    const url = URL.createObjectURL(blob);
-
-    // Create an audio element
-    const audio = document.createElement('audio');
-
-    // Set default attributes
-    audio.src = url;
-    audio.controls = options?.controls !== undefined ? options.controls : true;
-    audio.autoplay = options?.autoplay !== undefined ? options.autoplay : false;
-    audio.loop = options?.loop !== undefined ? options.loop : false;
-
-    // Add event listener to revoke the URL when the audio is no longer needed
-    audio.addEventListener('loadeddata', () => {
-      console.log('Audio loaded successfully');
-    });
-
-    // Clean up the URL when the audio is removed from the DOM
-    audio.addEventListener('remove', () => {
-      URL.revokeObjectURL(url);
-    });
-
-    // Append to container if provided
-    if (container) {
-      container.appendChild(audio);
-    }
-
-    return audio;
+    return createAudioElement(blob!, container, options);
   }
 
   /**

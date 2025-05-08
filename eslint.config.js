@@ -16,7 +16,7 @@ export default [
   typeCheckingConfig,
   {
     files: ['**/*.ts'],
-    ignores: ['**/*.test.ts', 'dist/**'],
+    ignores: ['**/*.test.ts', 'dist/**', 'examples/**/*.ts'],
     plugins: {
       '@typescript-eslint': tsEsLintPlugin,
       prettier: prettierPlugin
@@ -37,6 +37,30 @@ export default [
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'no-console': ['warn', { allow: ['warn', 'error'] }]
+    }
+  },
+  {
+    files: ['examples/**/*.ts'],
+    plugins: {
+      '@typescript-eslint': tsEsLintPlugin,
+      prettier: prettierPlugin
+    },
+    languageOptions: {
+      globals: globals.browser,
+      parser: tsEsLintParser,
+      parserOptions: {
+        ecmaVersion: 2018,
+        sourceType: 'module',
+        project: './tsconfig.examples.json',
+        tsconfigRootDir: process.cwd()
+      }
+    },
+    rules: {
+      'prettier/prettier': 'error',
+      '@typescript-eslint/explicit-function-return-type': 'warn',
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-console': 'off' // Allow console in examples
     }
   },
   {

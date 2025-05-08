@@ -18,6 +18,6 @@
     "tsBuildInfoFile": "./.tsbuildinfo",
     "noEmit": false
   },
-  "files": ["./src/Recastra.ts", "./src/index.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/__tests__/**"]
 }

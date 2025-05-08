@@ -2,6 +2,10 @@
  * FileManager - Handles saving and uploading recordings
  */
 
+import { validateBlob } from '../utils/validation';
+import { getFileExtension, downloadBlob } from '../utils/file';
+import { audioBufferToWav } from '../utils/audio';
+
 /**
  * Interface for FileManager options
  */
@@ -29,56 +33,23 @@ export class FileManager {
   }
 
   /**
-   * Downloads the recording using a generated blob URL
+   * Downloads the recording using a generated blob URL or just returns the blob
    * @param blob - The recording blob
    * @param mimeType - The MIME type of the recording
    * @param fileName - Optional file name (defaults to 'recording.[ext]')
+   * @param download - Whether to trigger download (defaults to true)
    * @returns The recording blob
    */
-  public save(blob: Blob, mimeType: string, fileName?: string): Blob {
-    if (!blob) {
-      throw new Error('No recording blob provided.');
+  public save(blob: Blob, mimeType: string, fileName?: string, download: boolean = true): Blob {
+    validateBlob(blob, 'No recording blob provided.');
+
+    // Get the appropriate file extension
+    const fileExtension = getFileExtension(mimeType, this.audioOnly);
+
+    // If download is true, create a download link and click it
+    if (download) {
+      void downloadBlob(blob, fileName || `recording.${fileExtension}`);
     }
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.style.display = 'none';
-    a.href = url;
-
-    // Determine file extension from MIME type
-    let fileExtension = mimeType.split('/')[1] || 'webm';
-
-    // Use appropriate file extension based on recording type
-    if (this.audioOnly) {
-      // For audio-only recordings, use audio extensions
-      if (fileExtension === 'webm') {
-        fileExtension = 'webm'; // Keep webm for audio
-      } else if (fileExtension === 'mp4') {
-        fileExtension = 'mp3'; // Use mp3 for audio when mp4 is used for video
-      } else if (fileExtension === 'ogg') {
-        fileExtension = 'ogg'; // Keep ogg for audio
-      } else {
-        fileExtension = 'wav'; // Default to wav for other formats
-      }
-    } else {
-      // For video recordings, ensure video extension
-      if (fileExtension === 'webm' || fileExtension === 'mp4' || fileExtension === 'ogg') {
-        // These are already video extensions, keep them
-      } else {
-        fileExtension = 'webm'; // Default to webm for video
-      }
-    }
-
-    a.download = fileName || `recording.${fileExtension}`;
-
-    document.body.appendChild(a);
-    a.click();
-
-    // Clean up
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 100);
 
     return blob;
   }
@@ -88,65 +59,51 @@ export class FileManager {
    * Always saves in WAV format for maximum compatibility
    * @param blob - The recording blob
    * @param fileName - Optional file name (defaults to 'recording-audio.wav')
+   * @param download - Whether to trigger download (defaults to true)
    * @returns The audio blob
    */
-  public saveAsAudio(blob: Blob, fileName?: string): Blob {
-    if (!blob) {
-      throw new Error('No recording blob provided.');
-    }
+  public async saveAsAudio(blob: Blob, fileName?: string, download: boolean = true): Promise<Blob> {
+    validateBlob(blob, 'No recording blob provided.');
 
     try {
-      // Always use WAV format for audio downloads
       const audioMimeType = 'audio/wav';
       const preferredExtension = 'wav';
+      const audioBlob = await this.extractAudioStream(blob, audioMimeType);
 
-      // Extract audio from the recording and return the blob
-      return this.extractAudioFromRecording(
-        blob,
-        audioMimeType,
-        fileName || `recording-audio.${preferredExtension}`
-      );
+      if (download) {
+        const fileNameWithExt = fileName || `recording-audio.${preferredExtension}`;
+        await downloadBlob(audioBlob, fileNameWithExt);
+      }
+
+      return audioBlob;
     } catch (error) {
       console.error('Error saving audio:', error);
       throw new Error('Failed to save audio recording');
     }
   }
 
-  /**
-   * Extracts audio from the recording and downloads it as WAV format
-   * @param blob - The recording blob
-   * @param audioMimeType - The MIME type for the audio (will be forced to WAV)
-   * @param fileName - The file name for the download
-   * @returns The audio blob
-   */
-  private extractAudioFromRecording(blob: Blob, audioMimeType: string, fileName: string): Blob {
-    // Force WAV extension regardless of MIME type
-    const fileNameWithWavExt = fileName.endsWith('.wav')
-      ? fileName
-      : fileName.replace(/\.[^/.]+$/, '') + '.wav';
+  private async extractAudioStream(blob: Blob, mimeType: string): Promise<Blob> {
+    try {
+      // Convert the blob to an ArrayBuffer
+      const arrayBuffer = await blob.arrayBuffer();
 
-    // Create a new blob with the correct MIME type
-    // Note: We're not actually converting to WAV here, just setting the MIME type
-    // The browser will handle the format based on the MIME type
-    const audioBlob = new Blob([blob], { type: audioMimeType });
+      // Create an AudioContext and decode the audio data
+      const context = new AudioContext();
+      const audioBuffer = await context.decodeAudioData(arrayBuffer);
 
-    // Create a download link
-    const url = URL.createObjectURL(audioBlob);
-    const a = document.createElement('a');
-    a.style.display = 'none';
-    a.href = url;
-    a.download = fileNameWithWavExt; // Force WAV extension
+      // Convert the AudioBuffer directly to a WAV blob without real-time playback
+      const audioBlob = audioBufferToWav(audioBuffer, mimeType);
 
-    document.body.appendChild(a);
-    a.click();
+      // Close the AudioContext to free up resources
+      if (context.state !== 'closed') {
+        await context.close();
+      }
 
-    // Clean up
-    setTimeout((): void => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 300);
-
-    return audioBlob;
+      return audioBlob;
+    } catch (error) {
+      console.error('Error extracting audio stream:', error);
+      throw new Error('Failed to extract audio from recording');
+    }
   }
 
   /**
@@ -157,20 +114,16 @@ export class FileManager {
    * @returns Promise resolving to the server Response
    */
   public async upload(blob: Blob, url: string, formFieldName: string = 'file'): Promise<Response> {
-    if (!blob) {
-      throw new Error('No recording blob provided.');
-    }
+    validateBlob(blob, 'No recording blob provided.');
 
     const formData = new FormData();
     formData.append(formFieldName, blob);
 
     try {
-      const response = await fetch(url, {
+      return await fetch(url, {
         method: 'POST',
         body: formData
       });
-
-      return response;
     } catch (error) {
       console.error('Error uploading recording:', error);
       throw new Error('Failed to upload recording');

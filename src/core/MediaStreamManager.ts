@@ -2,6 +2,14 @@
  * MediaStreamManager - Handles media stream initialization and device enumeration
  */
 
+import {
+  stopMediaStreamTracks,
+  removeAudioTracks,
+  addTracksToStream,
+  createAudioConstraints
+} from '../utils/media';
+import { executeWithTimeout, safeExecuteAsync } from '../utils/error';
+
 /**
  * Interface for MediaStreamManager options
  */
@@ -44,75 +52,16 @@ export class MediaStreamManager {
       video: true
     }
   ): Promise<MediaStream> {
-    try {
-      // If audioOnly is true, ensure video is disabled and audio is optimized
-      if (this.audioOnly) {
-        // For audio-only recordings, use higher quality audio settings
-        const audioConstraints =
-          typeof constraints.audio === 'boolean'
-            ? {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                // Higher sample rate and bit depth for better audio quality
-                sampleRate: 48000,
-                channelCount: 2
-              }
-            : {
-                ...constraints.audio,
-                // Ensure these are set even if custom constraints are provided
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                // Higher sample rate and bit depth if not explicitly set
-                sampleRate: (constraints.audio as MediaTrackConstraints).sampleRate || 48000,
-                channelCount: (constraints.audio as MediaTrackConstraints).channelCount || 2
-              };
-
-        constraints = { audio: audioConstraints, video: false };
-      }
-      // For video recordings, ensure audio constraints are properly set
-      else if (constraints.audio === true) {
-        constraints = {
-          ...constraints,
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            // Standard audio quality for video recordings
-            sampleRate: 44100,
-            channelCount: 2
-          }
-        };
-      }
-      // If custom audio constraints are provided, ensure essential properties are set
-      else if (constraints.audio && typeof constraints.audio !== 'boolean') {
-        const audioConstraints = constraints.audio;
-        constraints = {
-          ...constraints,
-          audio: {
-            ...audioConstraints,
-            // Ensure these are set even if not provided in custom constraints
-            echoCancellation: audioConstraints.echoCancellation ?? true,
-            noiseSuppression: audioConstraints.noiseSuppression ?? true,
-            autoGainControl: audioConstraints.autoGainControl ?? true
-          }
-        };
-      }
+    return safeExecuteAsync(async () => {
+      // Prepare constraints based on audioOnly setting
+      const preparedConstraints = this.prepareConstraints(constraints);
 
       // Request the media stream with a timeout to prevent hanging
-      const streamPromise = navigator.mediaDevices.getUserMedia(constraints);
-
-      // Set a timeout to prevent hanging if permissions are not granted
-      const timeoutPromise = new Promise<MediaStream>((_, reject) => {
-        setTimeout(
-          () => reject(new Error('Media access timeout - user may not have granted permissions')),
-          10000
-        );
-      });
-
-      // Use Promise.race to either get the stream or timeout
-      this.stream = await Promise.race([streamPromise, timeoutPromise]);
+      this.stream = await executeWithTimeout(
+        () => navigator.mediaDevices.getUserMedia(preparedConstraints),
+        10000,
+        'Media access timeout - user may not have granted permissions'
+      );
 
       // Log success with track information for debugging
       console.warn(
@@ -120,12 +69,41 @@ export class MediaStreamManager {
       );
 
       return this.stream;
-    } catch (error) {
-      console.error('Error accessing media devices:', error);
-      throw new Error(
-        `Failed to initialize media stream: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+    }, 'Error accessing media devices');
+  }
+
+  /**
+   * Prepares constraints based on audioOnly setting
+   * @param constraints - Original constraints
+   * @returns Prepared constraints
+   */
+  private prepareConstraints(constraints: MediaStreamConstraints): MediaStreamConstraints {
+    // If audioOnly is true, ensure video is disabled and audio is optimized
+    if (this.audioOnly) {
+      return {
+        audio: createAudioConstraints(constraints.audio, true), // Use high quality audio
+        video: false
+      };
     }
+
+    // For video recordings with boolean audio, ensure audio constraints are properly set
+    if (constraints.audio === true) {
+      return {
+        ...constraints,
+        audio: createAudioConstraints(true, false) // Use standard quality audio
+      };
+    }
+
+    // If custom audio constraints are provided, ensure essential properties are set
+    if (constraints.audio && typeof constraints.audio !== 'boolean') {
+      return {
+        ...constraints,
+        audio: createAudioConstraints(constraints.audio, false) // Use standard quality audio with custom constraints
+      };
+    }
+
+    // Return original constraints if no audio or if already properly configured
+    return constraints;
   }
 
   /**
@@ -138,7 +116,7 @@ export class MediaStreamManager {
     constraints: MediaStreamConstraints,
     maintainVideo: boolean = true
   ): Promise<MediaStream> {
-    try {
+    return safeExecuteAsync(async () => {
       // If we want to maintain the video stream when changing audio inputs
       if (maintainVideo && this.stream && constraints.audio && !this.audioOnly) {
         // Get current video tracks
@@ -146,46 +124,32 @@ export class MediaStreamManager {
 
         if (videoTracks.length > 0) {
           // Remove all existing audio tracks from the stream
-          this.stream.getAudioTracks().forEach((track: MediaStreamTrack): void => {
-            this.stream?.removeTrack(track);
-            track.stop();
-          });
+          removeAudioTracks(this.stream);
 
           // Get new audio stream with explicit audio constraints
           const audioConstraints = {
-            audio:
-              typeof constraints.audio === 'boolean'
-                ? {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                  }
-                : constraints.audio,
+            audio: createAudioConstraints(constraints.audio, false),
             video: false
           };
 
           let audioStream = await navigator.mediaDevices.getUserMedia(audioConstraints);
 
           // Add new audio tracks to existing stream
-          audioStream.getAudioTracks().forEach((track: MediaStreamTrack): void => {
-            this.stream?.addTrack(track);
-          });
+          addTracksToStream(audioStream, this.stream, 'audio');
 
           // Small delay to ensure audio tracks are properly initialized
-          await new Promise<void>((resolve: (value: void | PromiseLike<void>) => void) => {
-            setTimeout((): void => resolve(), 100);
-          });
+          await new Promise<void>(resolve => setTimeout(resolve, 100));
         } else {
           // If no video tracks, get a completely new stream
           if (this.stream) {
-            this.stream.getTracks().forEach((track: MediaStreamTrack): void => track.stop());
+            stopMediaStreamTracks(this.stream);
           }
           this.stream = await this.initStream(constraints);
         }
       } else {
         // Stop all tracks in the current stream
         if (this.stream) {
-          this.stream.getTracks().forEach((track: MediaStreamTrack): void => track.stop());
+          stopMediaStreamTracks(this.stream);
         }
 
         // Get new stream with updated constraints
@@ -193,10 +157,7 @@ export class MediaStreamManager {
       }
 
       return this.stream;
-    } catch (error) {
-      console.error('Error updating stream:', error);
-      throw new Error('Failed to update stream');
-    }
+    }, 'Error updating stream');
   }
 
   /**
@@ -204,13 +165,10 @@ export class MediaStreamManager {
    * @returns Promise resolving to an array of audio input devices
    */
   public async getAudioDevices(): Promise<MediaDeviceInfo[]> {
-    try {
+    return safeExecuteAsync(async () => {
       const devices = await navigator.mediaDevices.enumerateDevices();
       return devices.filter(device => device.kind === 'audioinput');
-    } catch (error) {
-      console.error('Error getting audio devices:', error);
-      throw new Error('Failed to get audio devices');
-    }
+    }, 'Error getting audio devices');
   }
 
   /**
@@ -218,13 +176,10 @@ export class MediaStreamManager {
    * @returns Promise resolving to an array of video input devices
    */
   public async getVideoDevices(): Promise<MediaDeviceInfo[]> {
-    try {
+    return safeExecuteAsync(async () => {
       const devices = await navigator.mediaDevices.enumerateDevices();
       return devices.filter(device => device.kind === 'videoinput');
-    } catch (error) {
-      console.error('Error getting video devices:', error);
-      throw new Error('Failed to get video devices');
-    }
+    }, 'Error getting video devices');
   }
 
   /**
@@ -240,7 +195,7 @@ export class MediaStreamManager {
    */
   public dispose(): void {
     if (this.stream) {
-      this.stream.getTracks().forEach((track: MediaStreamTrack): void => track.stop());
+      stopMediaStreamTracks(this.stream);
       this.stream = null;
     }
   }

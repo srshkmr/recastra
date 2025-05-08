@@ -49,7 +49,8 @@ async function minifyDistFiles() {
       const code = fs.readFileSync(file, 'utf8');
       const result = await minify(code, {
         compress: true,
-        mangle: true
+        mangle: true,
+        module: true
       });
 
       if (result.code) {

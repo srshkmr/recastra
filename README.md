@@ -471,7 +471,13 @@ Recastra is framework-agnostic and can be used with any JavaScript framework:
   </div>
 
   <div id="status">Ready to record</div>
-  <video id="preview" autoplay muted></video>
+
+  <!-- Camera preview -->
+  <h3>Camera Preview</h3>
+  <video id="preview" autoplay muted playsinline style="width: 100%; max-height: 300px; background: #f0f0f0;"></video>
+
+  <!-- Recording playback container -->
+  <div id="playbackContainer" style="margin-top: 20px;"></div>
 
   <script>
     // Access the Recastra constructor from the global scope
@@ -482,15 +488,27 @@ Recastra is framework-agnostic and can be used with any JavaScript framework:
     const stopBtn = document.getElementById('stopBtn');
     const status = document.getElementById('status');
     const preview = document.getElementById('preview');
+    const playbackContainer = document.getElementById('playbackContainer');
 
     // Initialize recorder
     let recorder = null;
     let isRecording = false;
+    let videoElement = null;
 
     async function initRecorder() {
       try {
         recorder = new Recastra();
-        await recorder.init({ audio: true, video: true });
+        await recorder.init({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }, 
+          video: { 
+            width: 1280, 
+            height: 720 
+          } 
+        });
 
         // Display the camera preview
         preview.srcObject = recorder.getStream();
@@ -511,6 +529,12 @@ Recastra is framework-agnostic and can be used with any JavaScript framework:
         status.textContent = 'Recording...';
         startBtn.disabled = true;
         stopBtn.disabled = false;
+
+        // Remove previous playback if exists
+        if (videoElement) {
+          playbackContainer.innerHTML = '';
+          videoElement = null;
+        }
       }
     });
 
@@ -520,6 +544,19 @@ Recastra is framework-agnostic and can be used with any JavaScript framework:
         const blob = await recorder.stop();
         isRecording = false;
         status.textContent = `Recording stopped. Size: ${(blob.size / 1024 / 1024).toFixed(2)} MB`;
+
+        // Create a heading for the playback
+        const playbackHeading = document.createElement('h3');
+        playbackHeading.textContent = 'Recording Playback';
+        playbackContainer.appendChild(playbackHeading);
+
+        // Use the replay method to create a video element for playback
+        videoElement = recorder.replay(playbackContainer, {
+          width: '100%',
+          height: 'auto',
+          controls: true,
+          autoplay: false
+        });
 
         // Create download buttons
         const downloadDiv = document.createElement('div');
@@ -539,7 +576,7 @@ Recastra is framework-agnostic and can be used with any JavaScript framework:
         downloadDiv.appendChild(audioBtn);
 
         // Add buttons to the page
-        status.parentNode.insertBefore(downloadDiv, status.nextSibling);
+        playbackContainer.appendChild(downloadDiv);
 
         startBtn.disabled = false;
         stopBtn.disabled = true;
@@ -563,19 +600,43 @@ Recastra is framework-agnostic and can be used with any JavaScript framework:
 ### React
 
 ```tsx
-import { useState, useEffect } from 'react';
-import { Recastra } from 'recastra';
+import { useState, useEffect, useRef } from 'react';
+import { Recastra } from '@srshkmr02/recastra';
 
 function RecordingComponent() {
   const [recorder, setRecorder] = useState<Recastra | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Initialize recorder
     const initRecorder = async () => {
-      const newRecorder = new Recastra();
-      await newRecorder.init({ audio: true, video: true });
-      setRecorder(newRecorder);
+      try {
+        const newRecorder = new Recastra();
+        await newRecorder.init({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }, 
+          video: { 
+            width: 1280, 
+            height: 720 
+          } 
+        });
+
+        setRecorder(newRecorder);
+
+        // Display the camera preview
+        if (videoRef.current && newRecorder.getStream()) {
+          videoRef.current.srcObject = newRecorder.getStream();
+        }
+      } catch (error) {
+        console.error('Error initializing recorder:', error);
+      }
     };
 
     initRecorder();
@@ -584,6 +645,9 @@ function RecordingComponent() {
     return () => {
       if (recorder) {
         recorder.dispose();
+      }
+      if (videoElement) {
+        setVideoElement(null);
       }
     };
   }, []);
@@ -595,13 +659,22 @@ function RecordingComponent() {
     }
   };
 
-  const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
-
   const stopRecording = async () => {
     if (recorder && isRecording) {
       const blob = await recorder.stop();
       setRecordingBlob(blob);
       setIsRecording(false);
+
+      // Create a video element to replay the recording
+      if (previewContainerRef.current) {
+        const video = recorder.replay(previewContainerRef.current, {
+          width: '100%',
+          height: 'auto',
+          controls: true,
+          autoplay: false
+        });
+        setVideoElement(video);
+      }
     }
   };
 
@@ -626,6 +699,23 @@ function RecordingComponent() {
         <button onClick={stopRecording} disabled={!isRecording}>
           Stop Recording
         </button>
+      </div>
+
+      {/* Live preview */}
+      <div style={{ marginTop: '20px' }}>
+        <h3>Camera Preview</h3>
+        <video 
+          ref={videoRef}
+          style={{ width: '100%', maxHeight: '300px', backgroundColor: '#f0f0f0' }}
+          autoPlay 
+          muted 
+          playsInline
+        />
+      </div>
+
+      {/* Recording playback */}
+      <div ref={previewContainerRef} style={{ marginTop: '20px' }}>
+        {recordingBlob && !videoElement && <h3>Recording Playback</h3>}
       </div>
 
       {recordingBlob && (
@@ -655,6 +745,23 @@ function RecordingComponent() {
       </button>
     </div>
 
+    <!-- Live preview -->
+    <div style="margin-top: 20px;">
+      <h3>Camera Preview</h3>
+      <video 
+        ref="videoPreview"
+        style="width: 100%; max-height: 300px; background-color: #f0f0f0;"
+        autoplay 
+        muted 
+        playsinline
+      ></video>
+    </div>
+
+    <!-- Recording playback -->
+    <div ref="previewContainer" style="margin-top: 20px;">
+      <h3 v-if="recordingBlob && !videoElement">Recording Playback</h3>
+    </div>
+
     <div v-if="recordingBlob" style="margin-top: 10px;">
       <button @click="downloadVideo">Download Video</button>
       <button @click="downloadAudio" style="margin-left: 10px;">
@@ -665,26 +772,47 @@ function RecordingComponent() {
 </template>
 
 <script>
-import { Recastra } from 'recastra';
+import { Recastra } from '@srshkmr02/recastra';
 
 export default {
   data() {
     return {
       recorder: null,
       isRecording: false,
-      recordingBlob: null
+      recordingBlob: null,
+      videoElement: null
     };
   },
   async mounted() {
-    // Initialize recorder
-    this.recorder = new Recastra();
-    await this.recorder.init({ audio: true, video: true });
+    try {
+      // Initialize recorder
+      this.recorder = new Recastra();
+      await this.recorder.init({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }, 
+        video: { 
+          width: 1280, 
+          height: 720 
+        } 
+      });
+
+      // Display the camera preview
+      if (this.$refs.videoPreview && this.recorder.getStream()) {
+        this.$refs.videoPreview.srcObject = this.recorder.getStream();
+      }
+    } catch (error) {
+      console.error('Error initializing recorder:', error);
+    }
   },
   beforeUnmount() {
     // Clean up
     if (this.recorder) {
       this.recorder.dispose();
     }
+    this.videoElement = null;
   },
   methods: {
     startRecording() {
@@ -698,6 +826,17 @@ export default {
         const blob = await this.recorder.stop();
         this.recordingBlob = blob;
         this.isRecording = false;
+
+        // Create a video element to replay the recording
+        if (this.$refs.previewContainer) {
+          const video = this.recorder.replay(this.$refs.previewContainer, {
+            width: '100%',
+            height: 'auto',
+            controls: true,
+            autoplay: false
+          });
+          this.videoElement = video;
+        }
       }
     },
     downloadVideo() {

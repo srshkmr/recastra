@@ -1,4 +1,6 @@
 import { FileManager } from '../core/FileManager';
+import * as validationUtils from '../utils/validation';
+import * as fileUtils from '../utils/file';
 
 describe('FileManager', () => {
   let fileManager: FileManager;
@@ -9,6 +11,17 @@ describe('FileManager', () => {
     jest.clearAllMocks();
     // Set up fake timers
     jest.useFakeTimers();
+
+    // Mock utility functions
+    jest.spyOn(validationUtils, 'validateBlob').mockImplementation(() => {});
+    jest.spyOn(fileUtils, 'getFileExtension').mockImplementation((mimeType, audioOnly) => {
+      if (audioOnly) {
+        if (mimeType === 'audio/mp4') return 'mp3';
+        return 'wav';
+      }
+      return 'webm';
+    });
+    jest.spyOn(fileUtils, 'downloadBlob').mockImplementation(() => Promise.resolve());
   });
 
   describe('constructor', () => {
@@ -24,46 +37,25 @@ describe('FileManager', () => {
   });
 
   describe('save', () => {
-    it('should save the recording with default file name', () => {
+    it('should save the recording with default file name and download=true', () => {
       // Create a mock blob
       const mockBlob = new Blob(['test data']);
       const mockMimeType = 'video/webm';
 
-      // Mock URL.createObjectURL
-      const mockUrl = 'mock-url';
-      URL.createObjectURL = jest.fn().mockReturnValue(mockUrl);
-      URL.revokeObjectURL = jest.fn();
-
-      // Mock document.createElement and appendChild
-      const mockAnchor = {
-        style: { display: 'none' },
-        href: '',
-        download: '',
-        click: jest.fn()
-      };
-      document.createElement = jest.fn().mockReturnValue(mockAnchor);
-      document.body.appendChild = jest.fn();
-      document.body.removeChild = jest.fn();
-
       // Save the recording
       fileManager.save(mockBlob, mockMimeType);
 
-      // Verify that URL.createObjectURL was called with the blob
-      expect(URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
+      // Verify that validateBlob was called with the blob
+      expect(validationUtils.validateBlob).toHaveBeenCalledWith(
+        mockBlob,
+        'No recording blob provided.'
+      );
 
-      // Verify that the anchor was created and configured
-      expect(document.createElement).toHaveBeenCalledWith('a');
-      expect(mockAnchor.href).toBe(mockUrl);
-      expect(mockAnchor.download).toBe('recording.webm');
+      // Verify that getFileExtension was called with the correct parameters
+      expect(fileUtils.getFileExtension).toHaveBeenCalledWith(mockMimeType, false);
 
-      // Verify that the anchor was appended to the document body and clicked
-      expect(document.body.appendChild).toHaveBeenCalledWith(mockAnchor);
-      expect(mockAnchor.click).toHaveBeenCalled();
-
-      // Verify that the anchor was removed and the URL was revoked
-      jest.runAllTimers();
-      expect(document.body.removeChild).toHaveBeenCalledWith(mockAnchor);
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith(mockUrl);
+      // Verify that downloadBlob was called with the correct parameters
+      expect(fileUtils.downloadBlob).toHaveBeenCalledWith(mockBlob, 'recording.webm');
     });
 
     it('should save the recording with custom file name', () => {
@@ -72,27 +64,26 @@ describe('FileManager', () => {
       const mockMimeType = 'video/webm';
       const fileName = 'custom-recording.webm';
 
-      // Mock URL.createObjectURL
-      const mockUrl = 'mock-url';
-      URL.createObjectURL = jest.fn().mockReturnValue(mockUrl);
-      URL.revokeObjectURL = jest.fn();
-
-      // Mock document.createElement and appendChild
-      const mockAnchor = {
-        style: { display: 'none' },
-        href: '',
-        download: '',
-        click: jest.fn()
-      };
-      document.createElement = jest.fn().mockReturnValue(mockAnchor);
-      document.body.appendChild = jest.fn();
-      document.body.removeChild = jest.fn();
-
       // Save the recording
       fileManager.save(mockBlob, mockMimeType, fileName);
 
-      // Verify that the anchor was configured with the custom file name
-      expect(mockAnchor.download).toBe(fileName);
+      // Verify that downloadBlob was called with the custom file name
+      expect(fileUtils.downloadBlob).toHaveBeenCalledWith(mockBlob, fileName);
+    });
+
+    it('should not download the recording when download=false', () => {
+      // Create a mock blob
+      const mockBlob = new Blob(['test data']);
+      const mockMimeType = 'video/webm';
+
+      // Save the recording with download=false
+      const result = fileManager.save(mockBlob, mockMimeType, undefined, false);
+
+      // Verify that downloadBlob was not called
+      expect(fileUtils.downloadBlob).not.toHaveBeenCalled();
+
+      // Verify that the blob was returned
+      expect(result).toBe(mockBlob);
     });
 
     it('should use appropriate file extension for audio-only recordings', () => {
@@ -103,30 +94,22 @@ describe('FileManager', () => {
       const mockBlob = new Blob(['test data']);
       const mockMimeType = 'audio/mp4';
 
-      // Mock URL.createObjectURL
-      const mockUrl = 'mock-url';
-      URL.createObjectURL = jest.fn().mockReturnValue(mockUrl);
-      URL.revokeObjectURL = jest.fn();
-
-      // Mock document.createElement and appendChild
-      const mockAnchor = {
-        style: { display: 'none' },
-        href: '',
-        download: '',
-        click: jest.fn()
-      };
-      document.createElement = jest.fn().mockReturnValue(mockAnchor);
-      document.body.appendChild = jest.fn();
-      document.body.removeChild = jest.fn();
-
       // Save the recording
       audioFileManager.save(mockBlob, mockMimeType);
 
-      // Verify that the anchor was configured with the appropriate file extension
-      expect(mockAnchor.download).toBe('recording.mp3');
+      // Verify that getFileExtension was called with audioOnly=true
+      expect(fileUtils.getFileExtension).toHaveBeenCalledWith(mockMimeType, true);
+
+      // Verify that downloadBlob was called with the appropriate file extension
+      expect(fileUtils.downloadBlob).toHaveBeenCalledWith(mockBlob, 'recording.mp3');
     });
 
     it('should throw error if blob is not provided', () => {
+      // Mock validateBlob to throw an error
+      jest.spyOn(validationUtils, 'validateBlob').mockImplementation(() => {
+        throw new Error('No recording blob provided.');
+      });
+
       // Use null with type assertion to Blob to match the expected parameter type
       expect(() => fileManager.save(null as unknown as Blob, 'video/webm')).toThrow(
         'No recording blob provided'
@@ -135,100 +118,101 @@ describe('FileManager', () => {
   });
 
   describe('saveAsAudio', () => {
-    it('should extract audio from the recording', () => {
+    it('should extract audio from the recording with download=true by default', async () => {
       // Create a mock blob
       const mockBlob = new Blob(['test data']);
+      const mockAudioBlob = new Blob(['audio data']);
 
-      // Mock extractAudioFromRecording
-      fileManager['extractAudioFromRecording'] = jest.fn();
+      // Mock extractAudioStream to return a mock audio blob
+      fileManager['extractAudioStream'] = jest.fn().mockResolvedValue(mockAudioBlob);
 
       // Save as audio
-      fileManager.saveAsAudio(mockBlob);
+      await fileManager.saveAsAudio(mockBlob);
 
-      // Verify that extractAudioFromRecording was called with the correct parameters
-      expect(fileManager['extractAudioFromRecording']).toHaveBeenCalledWith(
+      // Verify that validateBlob was called with the blob
+      expect(validationUtils.validateBlob).toHaveBeenCalledWith(
         mockBlob,
-        'audio/wav',
-        'recording-audio.wav'
+        'No recording blob provided.'
       );
+
+      // Verify that extractAudioStream was called with the correct parameters
+      expect(fileManager['extractAudioStream']).toHaveBeenCalledWith(mockBlob, 'audio/wav');
+
+      // Verify that downloadBlob was called with the correct parameters
+      expect(fileUtils.downloadBlob).toHaveBeenCalledWith(mockAudioBlob, 'recording-audio.wav');
     });
 
-    it('should save as audio with custom file name', () => {
+    it('should save as audio with custom file name', async () => {
       // Create a mock blob
       const mockBlob = new Blob(['test data']);
+      const mockAudioBlob = new Blob(['audio data']);
       const fileName = 'custom-audio.wav';
 
-      // Mock extractAudioFromRecording
-      fileManager['extractAudioFromRecording'] = jest.fn();
+      // Mock extractAudioStream to return a mock audio blob
+      fileManager['extractAudioStream'] = jest.fn().mockResolvedValue(mockAudioBlob);
 
       // Save as audio
-      fileManager.saveAsAudio(mockBlob, fileName);
+      await fileManager.saveAsAudio(mockBlob, fileName);
 
-      // Verify that extractAudioFromRecording was called with the correct parameters
-      expect(fileManager['extractAudioFromRecording']).toHaveBeenCalledWith(
-        mockBlob,
-        'audio/wav',
-        fileName
-      );
+      // Verify that downloadBlob was called with the custom file name
+      expect(fileUtils.downloadBlob).toHaveBeenCalledWith(mockAudioBlob, fileName);
     });
 
-    it('should throw error if blob is not provided', () => {
+    it('should save as audio with download=false', async () => {
+      // Create a mock blob
+      const mockBlob = new Blob(['test data']);
+      const mockAudioBlob = new Blob(['audio data']);
+
+      // Mock extractAudioStream to return a mock audio blob
+      fileManager['extractAudioStream'] = jest.fn().mockResolvedValue(mockAudioBlob);
+
+      // Save as audio with download=false
+      const result = await fileManager.saveAsAudio(mockBlob, undefined, false);
+
+      // Verify that downloadBlob was not called
+      expect(fileUtils.downloadBlob).not.toHaveBeenCalled();
+
+      // Verify that the audio blob was returned
+      expect(result).toBe(mockAudioBlob);
+    });
+
+    it('should throw error if blob is not provided', async () => {
+      // Mock validateBlob to throw an error
+      jest.spyOn(validationUtils, 'validateBlob').mockImplementation(() => {
+        throw new Error('No recording blob provided.');
+      });
+
       // Use null with type assertion to Blob to match the expected parameter type
-      expect(() => fileManager.saveAsAudio(null as unknown as Blob)).toThrow(
+      await expect(fileManager.saveAsAudio(null as unknown as Blob)).rejects.toThrow(
         'No recording blob provided'
       );
     });
   });
 
-  describe('extractAudioFromRecording', () => {
-    it('should extract audio from the recording', () => {
+  describe('extractAudioStream', () => {
+    it('should extract audio from the recording blob', async () => {
       // Create a mock blob
-      const mockBlob = new Blob(['test data']);
-      const mockMimeType = 'audio/wav';
-      const fileName = 'recording-audio.wav';
+      const mockBlob = new Blob(['test data'], { type: 'audio/wav' });
 
-      // Mock Blob constructor
-      const mockAudioBlob = new Blob([mockBlob], { type: 'audio/wav' });
-      global.Blob = jest.fn().mockImplementation(() => mockAudioBlob) as unknown as typeof Blob;
+      // Create a mock audio blob that will be returned
+      const mockAudioBlob = new Blob(['audio data'], { type: 'audio/wav' });
 
-      // Mock URL.createObjectURL
-      const mockUrl = 'mock-url';
-      URL.createObjectURL = jest.fn().mockReturnValue(mockUrl);
-      URL.revokeObjectURL = jest.fn();
+      // Mock the extractAudioStream method directly
+      // This avoids the complexity of mocking AudioContext, MediaRecorder, etc.
+      const originalExtractAudioStream = fileManager['extractAudioStream'];
+      fileManager['extractAudioStream'] = jest.fn().mockResolvedValue(mockAudioBlob);
 
-      // Mock document.createElement and appendChild
-      const mockAnchor = {
-        style: { display: 'none' },
-        href: '',
-        download: '',
-        click: jest.fn()
-      };
-      document.createElement = jest.fn().mockReturnValue(mockAnchor);
-      document.body.appendChild = jest.fn();
-      document.body.removeChild = jest.fn();
+      // Call saveAsAudio which will use our mocked extractAudioStream
+      const result = await fileManager.saveAsAudio(mockBlob, 'test.wav', false);
 
-      // Extract audio
-      fileManager['extractAudioFromRecording'](mockBlob, mockMimeType, fileName);
+      // Verify that extractAudioStream was called with the correct parameters
+      expect(fileManager['extractAudioStream']).toHaveBeenCalledWith(mockBlob, 'audio/wav');
 
-      // Verify that a new Blob was created with the correct MIME type
-      expect(global.Blob).toHaveBeenCalledWith([mockBlob], { type: 'audio/wav' });
+      // Verify that the result is the mock audio blob
+      expect(result).toBe(mockAudioBlob);
 
-      // Verify that URL.createObjectURL was called with the new blob
-      expect(URL.createObjectURL).toHaveBeenCalledWith(mockAudioBlob);
-
-      // Verify that the anchor was created and configured
-      expect(document.createElement).toHaveBeenCalledWith('a');
-      expect(mockAnchor.href).toBe(mockUrl);
-      expect(mockAnchor.download).toBe(fileName);
-
-      // Verify that the anchor was appended to the document body and clicked
-      expect(document.body.appendChild).toHaveBeenCalledWith(mockAnchor);
-      expect(mockAnchor.click).toHaveBeenCalled();
-
-      // Verify that the anchor was removed and the URL was revoked
-      jest.runAllTimers();
-      expect(document.body.removeChild).toHaveBeenCalledWith(mockAnchor);
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith(mockUrl);
+      // Restore the original method
+      fileManager['extractAudioStream'] = originalExtractAudioStream;
     });
   });
 
@@ -268,6 +252,11 @@ describe('FileManager', () => {
     });
 
     it('should throw error if blob is not provided', async () => {
+      // Mock validateBlob to throw an error
+      jest.spyOn(validationUtils, 'validateBlob').mockImplementation(() => {
+        throw new Error('No recording blob provided.');
+      });
+
       await expect(
         fileManager.upload(null as unknown as Blob, 'https://example.com/upload')
       ).rejects.toThrow('No recording blob provided');

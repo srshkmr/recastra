@@ -1,4 +1,6 @@
 import { RecordingManager } from '../core/RecordingManager';
+import * as validationUtils from '../utils/validation';
+import * as recorderUtils from '../utils/recorder';
 
 describe('RecordingManager', () => {
   let recordingManager: RecordingManager;
@@ -7,6 +9,30 @@ describe('RecordingManager', () => {
     recordingManager = new RecordingManager();
     // Clear all mocks before each test
     jest.clearAllMocks();
+
+    // Mock utility functions
+    jest.spyOn(validationUtils, 'validateStream').mockImplementation(() => {});
+    jest
+      .spyOn(recorderUtils, 'createOptimizedRecorder')
+      .mockImplementation((_stream, _mimeType, _options, _audioOnly) => {
+        return {
+          start: jest.fn(),
+          stop: jest.fn(),
+          requestData: jest.fn(),
+          state: 'inactive',
+          ondataavailable: null,
+          onerror: null,
+          onstop: null,
+          pause: jest.fn(),
+          resume: jest.fn()
+        } as unknown as MediaRecorder;
+      });
+    jest
+      .spyOn(recorderUtils, 'setupRecordingHeartbeat')
+      .mockImplementation(() => 123 as unknown as ReturnType<typeof setInterval>);
+    jest
+      .spyOn(recorderUtils, 'stopRecorderWithTimeout')
+      .mockImplementation(() => Promise.resolve(new Blob(['test data'])));
   });
 
   afterEach(() => {
@@ -54,34 +80,51 @@ describe('RecordingManager', () => {
   describe('start', () => {
     it('should start recording', () => {
       // Create a mock stream
-      const mockStream = {};
+      const mockStream = {} as MediaStream;
 
-      // Mock MediaRecorder
+      // Create a mock MediaRecorder
       const mockMediaRecorder = {
         start: jest.fn(),
+        stop: jest.fn(),
+        requestData: jest.fn(),
+        state: 'inactive',
         ondataavailable: null,
         onerror: null,
-        onstop: null
-      };
-      global.MediaRecorder = jest
-        .fn()
-        .mockImplementation(() => mockMediaRecorder) as unknown as typeof MediaRecorder;
+        onstop: null,
+        pause: jest.fn(),
+        resume: jest.fn()
+      } as unknown as MediaRecorder;
+
+      // Mock createOptimizedRecorder to return our mock
+      jest.spyOn(recorderUtils, 'createOptimizedRecorder').mockReturnValue(mockMediaRecorder);
 
       // Start recording
-      recordingManager.start(mockStream as unknown as MediaStream);
+      recordingManager.start(mockStream);
 
-      // Verify that MediaRecorder was created and started
-      expect(global.MediaRecorder).toHaveBeenCalledWith(
+      // Verify that validateStream was called
+      expect(validationUtils.validateStream).toHaveBeenCalledWith(
         mockStream,
-        expect.objectContaining({
-          mimeType: 'video/webm'
-        })
+        'Stream not provided. Provide a valid MediaStream.'
       );
+
+      // Verify that createOptimizedRecorder was called with the correct parameters
+      expect(recorderUtils.createOptimizedRecorder).toHaveBeenCalledWith(
+        mockStream,
+        'video/webm',
+        {},
+        false
+      );
+
+      // Verify that the MediaRecorder was started
       expect(mockMediaRecorder.start).toHaveBeenCalledWith(100);
-      expect(recordingManager['mediaRecorder']).toBe(mockMediaRecorder);
     });
 
     it('should throw error if stream is not provided', () => {
+      // Mock validateStream to throw an error
+      jest.spyOn(validationUtils, 'validateStream').mockImplementation(() => {
+        throw new Error('Stream not provided. Provide a valid MediaStream.');
+      });
+
       expect(() => recordingManager.start(null as unknown as MediaStream)).toThrow(
         'Stream not provided'
       );
@@ -94,28 +137,36 @@ describe('RecordingManager', () => {
       const mockMediaRecorder = {
         state: 'recording',
         stop: jest.fn(),
-        requestData: jest.fn()
-      };
-      recordingManager['mediaRecorder'] = mockMediaRecorder as any;
+        requestData: jest.fn(),
+        ondataavailable: null,
+        onerror: null,
+        onstop: null
+      } as unknown as MediaRecorder;
+      recordingManager['mediaRecorder'] = mockMediaRecorder;
 
       // Create mock chunks
       const mockChunks = [new Blob(['test data'])];
       recordingManager['chunks'] = mockChunks;
 
-      // Create a promise to resolve when onstop is called
-      const stopPromise = recordingManager.stop();
+      // Create a mock blob
+      const mockBlob = new Blob(['test data']);
 
-      // Simulate the onstop event
-      mockMediaRecorder.onstop();
+      // Mock stopRecorderWithTimeout to return our mock blob
+      jest.spyOn(recorderUtils, 'stopRecorderWithTimeout').mockResolvedValue(mockBlob);
 
-      // Wait for the promise to resolve
-      const blob = await stopPromise;
+      // Stop recording
+      const blob = await recordingManager.stop();
 
-      // Verify that stop was called and a blob was returned
-      expect(mockMediaRecorder.stop).toHaveBeenCalled();
-      expect(mockMediaRecorder.requestData).toHaveBeenCalled();
-      expect(blob).toBeInstanceOf(Blob);
-      expect(recordingManager['recordingBlob']).toBe(blob);
+      // Verify that stopRecorderWithTimeout was called with the correct parameters
+      expect(recorderUtils.stopRecorderWithTimeout).toHaveBeenCalledWith(
+        mockMediaRecorder,
+        mockChunks,
+        'video/webm'
+      );
+
+      // Verify that a blob was returned
+      expect(blob).toBe(mockBlob);
+      expect(recordingManager['recordingBlob']).toBe(mockBlob);
     });
 
     it('should reject if recording is not in progress', async () => {
@@ -128,21 +179,23 @@ describe('RecordingManager', () => {
       const mockMediaRecorder = {
         state: 'recording',
         stop: jest.fn(),
-        requestData: jest.fn()
-      };
-      recordingManager['mediaRecorder'] = mockMediaRecorder as any;
+        requestData: jest.fn(),
+        ondataavailable: null,
+        onerror: null,
+        onstop: null
+      } as unknown as MediaRecorder;
+      recordingManager['mediaRecorder'] = mockMediaRecorder;
 
       // Empty chunks
       recordingManager['chunks'] = [];
 
-      // Create a promise to resolve when onstop is called
-      const stopPromise = recordingManager.stop();
-
-      // Simulate the onstop event
-      mockMediaRecorder.onstop();
+      // Mock stopRecorderWithTimeout to reject
+      jest
+        .spyOn(recorderUtils, 'stopRecorderWithTimeout')
+        .mockRejectedValue(new Error('No data collected during recording'));
 
       // Wait for the promise to reject
-      await expect(stopPromise).rejects.toThrow('No data collected during recording');
+      await expect(recordingManager.stop()).rejects.toThrow('No data collected during recording');
     });
   });
 
@@ -151,9 +204,15 @@ describe('RecordingManager', () => {
       // Create a mock MediaRecorder
       const mockMediaRecorder = {
         state: 'recording',
-        pause: jest.fn()
-      };
-      recordingManager['mediaRecorder'] = mockMediaRecorder as any;
+        pause: jest.fn(),
+        stop: jest.fn(),
+        requestData: jest.fn(),
+        ondataavailable: null,
+        onerror: null,
+        onstop: null,
+        resume: jest.fn()
+      } as unknown as MediaRecorder;
+      recordingManager['mediaRecorder'] = mockMediaRecorder;
 
       // Pause recording
       recordingManager.pause();
@@ -166,9 +225,20 @@ describe('RecordingManager', () => {
       // Create a mock MediaRecorder
       const mockMediaRecorder = {
         state: 'inactive',
-        pause: jest.fn()
-      };
-      recordingManager['mediaRecorder'] = mockMediaRecorder as any;
+        pause: jest.fn(),
+        stop: jest.fn(),
+        requestData: jest.fn(),
+        ondataavailable: null,
+        onerror: null,
+        onstop: null,
+        resume: jest.fn()
+      } as unknown as MediaRecorder;
+      recordingManager['mediaRecorder'] = mockMediaRecorder;
+
+      // Mock validateRecorderState to throw an error
+      jest.spyOn(validationUtils, 'validateRecorderState').mockImplementation(() => {
+        throw new Error('Cannot pause: not recording');
+      });
 
       // Pause recording
       recordingManager.pause();
@@ -181,12 +251,28 @@ describe('RecordingManager', () => {
       // Create a mock MediaRecorder
       const mockMediaRecorder = {
         state: 'paused',
-        resume: jest.fn()
-      };
-      recordingManager['mediaRecorder'] = mockMediaRecorder as any;
+        resume: jest.fn(),
+        stop: jest.fn(),
+        requestData: jest.fn(),
+        ondataavailable: null,
+        onerror: null,
+        onstop: null,
+        pause: jest.fn()
+      } as unknown as MediaRecorder;
+      recordingManager['mediaRecorder'] = mockMediaRecorder;
+
+      // Reset the validateRecorderState mock to not throw an error
+      jest.spyOn(validationUtils, 'validateRecorderState').mockImplementation(() => {});
 
       // Resume recording
       recordingManager.resume();
+
+      // Verify that validateRecorderState was called with the correct parameters
+      expect(validationUtils.validateRecorderState).toHaveBeenCalledWith(
+        mockMediaRecorder,
+        'paused',
+        'Cannot resume: not paused'
+      );
 
       // Verify that resume was called
       expect(mockMediaRecorder.resume).toHaveBeenCalled();
@@ -196,9 +282,20 @@ describe('RecordingManager', () => {
       // Create a mock MediaRecorder
       const mockMediaRecorder = {
         state: 'recording',
-        resume: jest.fn()
-      };
-      recordingManager['mediaRecorder'] = mockMediaRecorder as any;
+        resume: jest.fn(),
+        stop: jest.fn(),
+        requestData: jest.fn(),
+        ondataavailable: null,
+        onerror: null,
+        onstop: null,
+        pause: jest.fn()
+      } as unknown as MediaRecorder;
+      recordingManager['mediaRecorder'] = mockMediaRecorder;
+
+      // Mock validateRecorderState to throw an error
+      jest.spyOn(validationUtils, 'validateRecorderState').mockImplementation(() => {
+        throw new Error('Cannot resume: not paused');
+      });
 
       // Resume recording
       recordingManager.resume();
@@ -212,9 +309,16 @@ describe('RecordingManager', () => {
     it('should return the current recording state', () => {
       // Create a mock MediaRecorder
       const mockMediaRecorder = {
-        state: 'recording'
-      };
-      recordingManager['mediaRecorder'] = mockMediaRecorder as any;
+        state: 'recording',
+        stop: jest.fn(),
+        requestData: jest.fn(),
+        ondataavailable: null,
+        onerror: null,
+        onstop: null,
+        pause: jest.fn(),
+        resume: jest.fn()
+      } as unknown as MediaRecorder;
+      recordingManager['mediaRecorder'] = mockMediaRecorder;
 
       // Get state
       const state = recordingManager.getState();

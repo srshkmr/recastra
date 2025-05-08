@@ -2,6 +2,8 @@
  * AudioProcessor - Handles audio processing and gain control
  */
 
+import { createOptimizedAudioContext, createProcessedAudioStream } from '../utils/audio';
+
 /**
  * Interface for AudioProcessor options
  */
@@ -57,13 +59,11 @@ export class AudioProcessor {
    */
   public processAudioStream(stream: MediaStream): MediaStream {
     try {
+      // Process synchronously to maintain return type compatibility
       // Reuse existing audio context if possible to prevent interruptions
       if (!this.audioContext || this.audioContext.state === 'closed') {
         // Create a new AudioContext with optimal settings for audio processing
-        this.audioContext = new AudioContext({
-          latencyHint: 'interactive', // Optimize for lower latency
-          sampleRate: 48000 // Use high sample rate for better quality
-        });
+        this.audioContext = createOptimizedAudioContext();
       } else if (this.audioContext.state === 'suspended') {
         // Resume the audio context if it was suspended
         this.audioContext.resume().catch(err => {
@@ -71,87 +71,21 @@ export class AudioProcessor {
         });
       }
 
-      // Create a GainNode for volume control with smoothing
+      // Create a processed audio stream with gain, filtering, and compression
+      const processedStream = createProcessedAudioStream(stream, this.audioContext, this.audioGain);
+
+      // Store the gain node reference for later updates
       this.gainNode = this.audioContext.createGain();
-
-      // Set the gain value with a slight ramp to prevent clicks/pops
-      const currentTime = this.audioContext.currentTime;
-      this.gainNode.gain.setValueAtTime(0, currentTime);
-      this.gainNode.gain.linearRampToValueAtTime(this.audioGain, currentTime + 0.05);
-
-      // Create a MediaStreamAudioSourceNode from the input stream
-      const sourceNode = this.audioContext.createMediaStreamSource(stream);
-
-      // Create a BiquadFilterNode for noise reduction
-      const filterNode = this.audioContext.createBiquadFilter();
-      filterNode.type = 'lowpass';
-      filterNode.frequency.value = 8000; // Reduce high-frequency noise
-
-      // Create a compressor to even out volume levels and prevent clipping
-      const compressorNode = this.audioContext.createDynamicsCompressor();
-      compressorNode.threshold.value = -24;
-      compressorNode.knee.value = 30;
-      compressorNode.ratio.value = 12;
-      compressorNode.attack.value = 0.003;
-      compressorNode.release.value = 0.25;
-
-      // Create a MediaStreamDestinationNode to output the processed audio
-      const destinationNode = this.audioContext.createMediaStreamDestination();
-
-      // Connect the nodes: source -> filter -> compressor -> gain -> destination
-      sourceNode.connect(filterNode);
-      filterNode.connect(compressorNode);
-      compressorNode.connect(this.gainNode);
-      this.gainNode.connect(destinationNode);
-
-      // Get the video tracks from the original stream
-      const videoTracks = stream.getVideoTracks();
-
-      // Create a new MediaStream with the processed audio track
-      const processedStream = new MediaStream();
-
-      // Add the processed audio track to the new stream with constraints to ensure stability
-      destinationNode.stream.getAudioTracks().forEach(track => {
-        // Set track constraints for stability
-        if (track.applyConstraints) {
-          track
-            .applyConstraints({
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: false // We're handling gain manually
-            })
-            .catch(err => {
-              console.warn('Failed to apply audio track constraints:', err);
-            });
-        }
-        processedStream.addTrack(track);
-      });
-
-      // Add the original video tracks to the new stream (if any)
-      videoTracks.forEach(track => {
-        processedStream.addTrack(track);
-      });
+      this.gainNode.gain.value = this.audioGain;
 
       console.warn(
         `Processed audio stream with gain: ${this.audioGain}, sample rate: ${this.audioContext.sampleRate}Hz`
       );
+
       return processedStream;
     } catch (error) {
       console.error('Error processing audio stream:', error);
-
-      // Attempt recovery by closing and nullifying the audio context
-      try {
-        if (this.audioContext) {
-          this.audioContext.close().catch(() => {});
-          this.audioContext = null;
-        }
-        this.gainNode = null;
-      } catch (cleanupError) {
-        console.warn('Error during audio context cleanup:', cleanupError);
-      }
-
-      // If processing fails, return the original stream
-      return stream;
+      return stream; // Return original stream as fallback if processing fails
     }
   }
 
@@ -161,9 +95,20 @@ export class AudioProcessor {
   public dispose(): void {
     // Clean up audio processing resources
     if (this.audioContext) {
-      this.audioContext.close().catch(() => {});
-      this.audioContext = null;
+      try {
+        // Check if close method exists and is a function
+        if (this.audioContext.close && typeof this.audioContext.close === 'function') {
+          // Use a void IIFE to handle the async operation without changing the return type
+          void this.audioContext.close().catch(() => {
+            console.warn('Error closing AudioContext');
+          });
+        }
+      } catch (error) {
+        console.warn('Error disposing AudioProcessor:', error);
+      } finally {
+        this.audioContext = null;
+        this.gainNode = null;
+      }
     }
-    this.gainNode = null;
   }
 }
