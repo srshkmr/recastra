@@ -325,11 +325,18 @@ npm run dev
 
 Recastra is designed to be lightweight while providing powerful recording capabilities. The package size has been optimized by:
 
-1. **Minification**: JavaScript files are automatically minified during the build process using Terser, reducing the package size by approximately 40%.
+1. **Advanced Minification**: JavaScript files are automatically minified during the build process using Terser with optimized settings, reducing the package size by approximately 70%. The minification process includes:
+   - Advanced code compression techniques
+   - Property mangling for private properties
+   - Dead code elimination
+   - Multiple optimization passes
+   - Removal of comments and whitespace
 
 2. **Excluding source maps from the published package**: Source maps are useful for debugging but add approximately 25% to the package size. They are excluded from the published package using the "files" field in package.json.
 
 3. **Minimal runtime dependencies**: Recastra has zero runtime dependencies, relying only on native browser APIs.
+
+4. **ES Modules**: Using ES modules allows for better tree-shaking and code optimization by modern bundlers.
 
 If you want to further reduce the package size for your application, consider:
 
@@ -340,8 +347,8 @@ If you want to further reduce the package size for your application, consider:
 3. **Custom builds**: If you only need specific features, you could create a custom build that excludes unused components.
 
 Current package size:
-- Compressed: ~15 kB
-- Unpacked: ~51 kB
+- Compressed: ~12 kB
+- Unpacked: ~17 kB
 
 ### Architecture
 
