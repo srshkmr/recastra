@@ -318,19 +318,20 @@ Uploads the recording to a server via HTTP POST. You can specify the form field 
 git clone https://github.com/srshkmr/recastra.git
 cd recastra
 npm install
-npm run dev
+npm run dev  # Uses Rollup in watch mode for development
 ```
 
 ### Package Size Optimization
 
 Recastra is designed to be lightweight while providing powerful recording capabilities. The package size has been optimized by:
 
-1. **Advanced Minification**: JavaScript files are automatically minified during the build process using Terser with optimized settings, reducing the package size by approximately 70%. The minification process includes:
+1. **Rollup Bundling & Minification**: JavaScript files are bundled and minified during the build process using Rollup with the Terser plugin, reducing the package size significantly. The build process includes:
+   - Module bundling with code splitting for better organization
    - Advanced code compression techniques
    - Property mangling for private properties
    - Dead code elimination
-   - Multiple optimization passes
    - Removal of comments and whitespace
+   - Preservation of module structure for better imports
 
 2. **Excluding source maps from the published package**: Source maps are useful for debugging but add approximately 25% to the package size. They are excluded from the published package using the "files" field in package.json.
 
@@ -347,8 +348,8 @@ If you want to further reduce the package size for your application, consider:
 3. **Custom builds**: If you only need specific features, you could create a custom build that excludes unused components.
 
 Current package size:
-- Compressed: ~12 kB
-- Unpacked: ~17 kB
+- Main module (Recastra.js): 3.6 kB
+- Total package size: ~15 kB
 
 ### Architecture
 
@@ -384,6 +385,28 @@ This architecture provides several benefits:
 - **Better testability**: Components can be tested in isolation
 - **Enhanced extensibility**: New features can be added by extending specific components
 
+### Recent Improvements
+
+Recastra has undergone significant improvements to enhance maintainability, extensibility, and type safety:
+
+1. **Code Refactoring**:
+   - Applied DRY (Don't Repeat Yourself) principles by extracting repeated logic into reusable functions
+   - Implemented a helper method `handleStreamUpdate` to centralize stream update logic
+   - Created a generic `getRecordingBlobAndPerform` method to reduce code duplication in blob operations
+   - Improved error handling with more specific type assertions
+
+2. **Type Safety Enhancements**:
+   - Added explicit `RecordingState` type for better state management
+   - Created an interface for recording blob operations with generic return types
+   - Replaced non-null assertions (`!`) with proper type assertions (`as`) after validation
+   - Enhanced TypeScript interfaces for better IDE support and documentation
+
+3. **Build System Upgrade**:
+   - Migrated from a custom build process to Rollup for modern module bundling
+   - Implemented code splitting to preserve module structure
+   - Configured Terser plugin for optimal minification
+   - Improved development workflow with watch mode
+
 ### Building
 
 To build the package for production:
@@ -392,7 +415,13 @@ To build the package for production:
 npm run build
 ```
 
-This will compile the TypeScript code and generate the distribution files in the `dist` directory.
+This will compile the TypeScript code using Rollup, which bundles and minifies the code while preserving the module structure. The distribution files will be generated in the `dist` directory.
+
+If you need to use the legacy build process:
+
+```bash
+npm run build:legacy
+```
 
 ### Testing
 

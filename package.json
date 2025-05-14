@@ -1,6 +1,6 @@
 {
   "name": "@srshkmr02/recastra",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "A lightweight TypeScript plugin for recording audio and video using WebRTC",
   "type": "module",
   "main": "dist/index.js",
@@ -22,15 +22,15 @@
     "!dist/**/*.js.map"
   ],
   "scripts": {
-    "build": "node build.js",
-    "dev": "tsc --project tsconfig.json --watch",
+    "build": "rollup -c",
+    "build:legacy": "node build.js",
+    "dev": "rollup -c -w",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
     "prepare": "husky",
-    "publish:public": "npm publish --access public",
-    "minify": "node minify.js"
+    "publish:public": "npm publish --access public"
   },
   "keywords": [
     "webrtc",
@@ -44,9 +44,13 @@
   "license": "MIT",
   "devDependencies": {
     "@eslint/js": "^9.26.0",
+    "@rollup/plugin-commonjs": "^28.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^12.1.2",
     "@types/dom-mediacapture-record": "^1.0.22",
     "@types/jest": "^29.5.14",
-    "@types/node": "^22.15.17",
+    "@types/node": "^22.15.18",
     "@typescript-eslint/eslint-plugin": "^8.32.1",
     "@typescript-eslint/parser": "^8.32.1",
     "eslint": "^9.26.0",
@@ -59,8 +63,9 @@
     "jest-environment-jsdom": "^29.7.0",
     "lint-staged": "^16.0.0",
     "prettier": "^3.5.3",
-    "terser": "^5.39.1",
+    "rollup": "^4.40.2",
     "ts-jest": "^29.3.2",
+    "tslib": "^2.8.1",
     "typescript": "^5.8.3"
   },
   "lint-staged": {

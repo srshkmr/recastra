@@ -126,16 +126,8 @@ try {
   process.exit(1);
 }
 
-// Run the minification script to minify the JavaScript files
-console.log('Running minification script...');
-try {
-  execSync('node minify.js', { stdio: 'inherit' });
-  console.log('Minification complete');
-} catch (error) {
-  console.error('Minification failed:', error);
-  // Continue with the build process even if minification fails
-  console.log('Continuing build process despite minification failure');
-}
+// Minification step removed as Terser has been removed from the project
+console.log('Skipping minification as Terser has been removed');
 // Keep declaration files for Recastra.js and index.js
 console.log('Keeping declaration files for Recastra.js and index.js');
 

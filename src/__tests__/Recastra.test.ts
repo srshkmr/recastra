@@ -207,12 +207,19 @@ describe('Recastra', () => {
     });
 
     it('should restart recording if it was recording', async () => {
-      // Mock the getStream method
-      const mockStream = {} as MediaStream;
+      // Mock the getStream method with a more complete mock
+      const mockStream = {
+        getAudioTracks: jest.fn().mockReturnValue([{}]),
+        getTracks: jest.fn().mockReturnValue([{ stop: jest.fn() }])
+      } as unknown as MediaStream;
+
       mockStreamManager.getStream.mockReturnValue(mockStream);
-      mockStream.getAudioTracks = jest.fn().mockReturnValue([{}]);
       mockAudioProcessor.processAudioStream.mockReturnValue(mockStream);
       mockRecordingManager.getState.mockReturnValue('recording');
+
+      // Mock the stop method to return a Promise that resolves to a Blob
+      const mockBlob = new Blob(['test data']);
+      mockRecordingManager.stop.mockResolvedValue(mockBlob);
 
       // Set audio gain
       await recastra.setAudioGain(1.5);
