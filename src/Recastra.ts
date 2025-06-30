@@ -67,6 +67,7 @@ export class Recastra {
   private recordingManager: RecordingManager;
   private fileManager: FileManager;
   private audioOnly: boolean = false;
+  private processedStream: MediaStream | null = null;
 
   /**
    * Creates a new Recastra instance
@@ -119,7 +120,10 @@ export class Recastra {
 
       // Process the audio stream to boost volume if there are audio tracks and gain > 1.0
       if (stream.getAudioTracks().length > 0) {
-        stream = this.audioProcessor.processAudioStream(stream);
+        this.processedStream = this.audioProcessor.processAudioStream(stream);
+        stream = this.processedStream;
+      } else {
+        this.processedStream = stream;
       }
     }, 'Error initializing Recastra');
   }
@@ -145,7 +149,7 @@ export class Recastra {
     if (stream && stream.getAudioTracks().length > 0 && gain > 1.0) {
       await this.handleStreamUpdate(() => {
         // Reprocess the stream with the new gain
-        this.audioProcessor.processAudioStream(stream);
+        this.processedStream = this.audioProcessor.processAudioStream(stream);
 
         // Return a promise that updates the stream in the stream manager
         return this.streamManager.updateStream({
@@ -179,6 +183,13 @@ export class Recastra {
       if (stream) {
         stopMediaStreamTracks(stream);
       }
+
+      // Also stop the processed stream if it exists and is different from the original stream
+      if (this.processedStream && this.processedStream !== stream) {
+        stopMediaStreamTracks(this.processedStream);
+        this.processedStream = null;
+      }
+
       return blob;
     });
   }
@@ -199,7 +210,10 @@ export class Recastra {
 
         // Process the audio stream if needed
         if (stream.getAudioTracks().length > 0) {
-          stream = this.audioProcessor.processAudioStream(stream);
+          this.processedStream = this.audioProcessor.processAudioStream(stream);
+          stream = this.processedStream;
+        } else {
+          this.processedStream = stream;
         }
 
         return stream;
@@ -238,12 +252,14 @@ export class Recastra {
 
   /**
    * Returns the current active MediaStream
+   * Returns the processed stream if available, otherwise the original stream
    */
   public getStream(): MediaStream {
     const stream = this.streamManager.getStream();
     validateStream(stream, 'Stream not initialized. Call init() first.');
     // After validation, we know stream is not null
-    return stream as MediaStream;
+    // Return the processed stream if it exists, otherwise return the original stream
+    return this.processedStream || (stream as MediaStream);
   }
 
   /**
@@ -365,6 +381,12 @@ export class Recastra {
    * Cleans up resources when the recorder is no longer needed
    */
   public dispose(): void {
+    // Stop the processed stream if it exists
+    if (this.processedStream) {
+      stopMediaStreamTracks(this.processedStream);
+      this.processedStream = null;
+    }
+
     this.streamManager.dispose();
     this.audioProcessor.dispose();
     this.recordingManager.dispose();

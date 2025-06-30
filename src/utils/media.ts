@@ -113,7 +113,7 @@ export function createAudioElement(
  * @param stream - The MediaStream to stop
  */
 export function stopMediaStreamTracks(stream: MediaStream): void {
-  if (stream) {
+  if (stream && typeof stream.getTracks === 'function') {
     stream.getTracks().forEach((track: MediaStreamTrack): void => track.stop());
   }
 }

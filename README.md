@@ -407,6 +407,34 @@ Recastra has undergone significant improvements to enhance maintainability, exte
    - Configured Terser plugin for optimal minification
    - Improved development workflow with watch mode
 
+### TypeScript Support
+
+Recastra is written in TypeScript and provides full type definitions for a better development experience:
+
+1. **Type Definitions**:
+   - Complete TypeScript declarations for all classes, interfaces, and methods
+   - Properly typed parameters and return values for all public APIs
+   - Type definitions are automatically included when you install the package
+
+2. **Using with TypeScript**:
+   ```typescript
+   import { Recastra, RecastraOptions } from '@srshkmr02/recastra';
+
+   // All types are available for better IDE support and type checking
+   const options: RecastraOptions = {
+     audioOnly: true,
+     audioGain: 2.0
+   };
+
+   const recorder = new Recastra(options);
+   ```
+
+3. **Troubleshooting**:
+   If you encounter TypeScript errors like "Could not find a declaration file for module '@srshkmr02/recastra'", you can:
+   - Make sure you're using the latest version of the package
+   - Add a declaration in your project: `declare module '@srshkmr02/recastra';`
+   - Check that your TypeScript configuration is set up correctly
+
 ### Building
 
 To build the package for production:

@@ -16,7 +16,7 @@ export default [
   typeCheckingConfig,
   {
     files: ['**/*.ts'],
-    ignores: ['**/*.test.ts', 'dist/**', 'examples/**/*.ts'],
+    ignores: ['**/*.test.ts', 'dist/**', 'examples/**/*.ts', 'recastra.d.ts'],
     plugins: {
       '@typescript-eslint': tsEsLintPlugin,
       prettier: prettierPlugin
