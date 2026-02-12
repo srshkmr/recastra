@@ -196,6 +196,7 @@ describe('Recastra', () => {
       mockStream.getAudioTracks = jest.fn().mockReturnValue([{}]);
       mockAudioProcessor.processAudioStream.mockReturnValue(mockStream);
       mockRecordingManager.getState.mockReturnValue('inactive');
+      mockStreamManager.updateStream.mockResolvedValue(mockStream);
 
       // Set audio gain
       await recastra.setAudioGain(1.5);
@@ -215,6 +216,7 @@ describe('Recastra', () => {
       mockStreamManager.getStream.mockReturnValue(mockStream);
       mockAudioProcessor.processAudioStream.mockReturnValue(mockStream);
       mockRecordingManager.getState.mockReturnValue('recording');
+      mockStreamManager.updateStream.mockResolvedValue(mockStream);
 
       // Mock the stop method to return a Promise that resolves to a Blob
       const mockBlob = new Blob(['test data']);
