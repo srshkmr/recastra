@@ -11,7 +11,9 @@ import {
   createVideoElement,
   createAudioElement,
   MediaElementOptions,
-  stopMediaStreamTracks
+  stopMediaStreamTracks,
+  removeVideoTracks,
+  addTracksToStream
 } from './utils/media';
 import { safeExecuteAsync } from './utils/error';
 import { ERR_STREAM_NOT_INIT, ERR_NO_RECORDING } from './errors';
@@ -138,15 +140,12 @@ export class Recastra {
     // If we have an active stream with audio tracks, reprocess it with the new gain
     const stream = this.streamManager.getStream();
     if (stream && stream.getAudioTracks().length > 0 && gain > 1.0) {
-      await this.handleStreamUpdate(() => {
-        // Reprocess the stream with the new gain
-        this.processedStream = this.audioProcessor.processAudioStream(stream);
-
-        // Return a promise that updates the stream in the stream manager
-        return this.streamManager.updateStream({
+      await this.handleStreamUpdate(async () => {
+        const updatedStream = await this.streamManager.updateStream({
           audio: true,
           video: !this.audioOnly
         });
+        return this.processStreamAudio(updatedStream);
       });
     }
   }
@@ -157,9 +156,7 @@ export class Recastra {
   public start(): void {
     const stream = this.streamManager.getStream();
     validateStream(stream, ERR_STREAM_NOT_INIT);
-
-    // After validation, we know stream is not null
-    this.recordingManager.start(stream as MediaStream);
+    this.recordingManager.start(this.processedStream || (stream as MediaStream));
   }
 
   /**
@@ -205,29 +202,48 @@ export class Recastra {
     }
   }
 
-  /** Applies audio processing if the stream has audio tracks, stores result either way */
+  /**
+   * Applies audio processing and keeps the processedStream reference stable
+   * so consumers holding it (e.g. via getStream()) see track changes immediately.
+   */
   private processStreamAudio(stream: MediaStream): MediaStream {
     if (stream.getAudioTracks().length > 0) {
-      this.processedStream = this.audioProcessor.processAudioStream(stream);
+      const fresh = this.audioProcessor.processAudioStream(stream);
+
+      if (this.processedStream && this.processedStream !== fresh) {
+        this.replaceTracksInPlace(fresh);
+        return this.processedStream;
+      }
+
+      this.processedStream = fresh;
       return this.processedStream;
     }
     this.processedStream = stream;
     return stream;
   }
 
+  /** Swaps all tracks on the existing processedStream with those from the source */
+  private replaceTracksInPlace(source: MediaStream): void {
+    removeVideoTracks(this.processedStream!);
+    addTracksToStream(source, this.processedStream!, 'video');
+
+    this.processedStream!.getAudioTracks().forEach(track => {
+      this.processedStream!.removeTrack(track);
+      track.stop();
+    });
+    addTracksToStream(source, this.processedStream!, 'audio');
+  }
+
   /** Handles stream swaps while preserving recording state */
   private async handleStreamUpdate(updateFn: () => Promise<MediaStream>): Promise<void> {
     const currentState = this.recordingManager.getState();
-    const wasActive = currentState === 'recording' || currentState === 'paused';
 
-    if (wasActive) {
-      await this.stop();
+    if (currentState === 'recording' || currentState === 'paused') {
+      await this.recordingManager.stop();
     }
 
-    // Perform the stream update
     await updateFn();
 
-    // Restart recording if it was active
     if (currentState === 'recording') {
       this.start();
     } else if (currentState === 'paused') {
@@ -243,8 +259,6 @@ export class Recastra {
   public getStream(): MediaStream {
     const stream = this.streamManager.getStream();
     validateStream(stream, ERR_STREAM_NOT_INIT);
-    // After validation, we know stream is not null
-    // Return the processed stream if it exists, otherwise return the original stream
     return this.processedStream || (stream as MediaStream);
   }
 

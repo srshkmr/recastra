@@ -124,6 +124,7 @@ export class RecordingManager {
 
           if (this.chunks.length > 0) {
             console.warn('Attempting to recover from MediaRecorder error...');
+            const currentStream = this.mediaRecorder?.stream;
 
             if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
               try {
@@ -133,14 +134,16 @@ export class RecordingManager {
               }
             }
 
-            setTimeout((): void => {
-              try {
-                this.start(stream);
-                console.info('Successfully recovered from MediaRecorder error');
-              } catch (restartError) {
-                console.error('Failed to restart recording after error:', restartError);
-              }
-            }, ERROR_RECOVERY_DELAY_MS);
+            if (currentStream) {
+              setTimeout((): void => {
+                try {
+                  this.start(currentStream);
+                  console.info('Successfully recovered from MediaRecorder error');
+                } catch (restartError) {
+                  console.error('Failed to restart recording after error:', restartError);
+                }
+              }, ERROR_RECOVERY_DELAY_MS);
+            }
           }
         } catch (recoveryError) {
           console.error('Error during MediaRecorder error recovery:', recoveryError);
