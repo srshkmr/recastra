@@ -14,6 +14,7 @@ import {
   stopMediaStreamTracks
 } from './utils/media';
 import { safeExecuteAsync } from './utils/error';
+import { ERR_STREAM_NOT_INIT, ERR_NO_RECORDING } from './errors';
 
 /**
  * Interface for Recastra options
@@ -41,10 +42,8 @@ export interface RecastraOptions {
   audioGain?: number;
 }
 
-/**
- * Recording state type
- */
-export type RecordingState = 'inactive' | 'recording' | 'paused';
+// Re-export for backward compatibility
+export type { RecordingState } from './types';
 
 /**
  * Interface for recording blob operations
@@ -115,16 +114,8 @@ export class Recastra {
     }
   ): Promise<void> {
     return safeExecuteAsync(async () => {
-      // Initialize the stream
-      let stream = await this.streamManager.initStream(constraints);
-
-      // Process the audio stream to boost volume if there are audio tracks and gain > 1.0
-      if (stream.getAudioTracks().length > 0) {
-        this.processedStream = this.audioProcessor.processAudioStream(stream);
-        stream = this.processedStream;
-      } else {
-        this.processedStream = stream;
-      }
+      const stream = await this.streamManager.initStream(constraints);
+      this.processStreamAudio(stream);
     }, 'Error initializing Recastra');
   }
 
@@ -165,7 +156,7 @@ export class Recastra {
    */
   public start(): void {
     const stream = this.streamManager.getStream();
-    validateStream(stream, 'Stream not initialized. Call init() first.');
+    validateStream(stream, ERR_STREAM_NOT_INIT);
 
     // After validation, we know stream is not null
     this.recordingManager.start(stream as MediaStream);
@@ -205,18 +196,8 @@ export class Recastra {
   ): Promise<void> {
     try {
       await this.handleStreamUpdate(async () => {
-        // Update the stream
-        let stream = await this.streamManager.updateStream(constraints, maintainVideo);
-
-        // Process the audio stream if needed
-        if (stream.getAudioTracks().length > 0) {
-          this.processedStream = this.audioProcessor.processAudioStream(stream);
-          stream = this.processedStream;
-        } else {
-          this.processedStream = stream;
-        }
-
-        return stream;
+        const stream = await this.streamManager.updateStream(constraints, maintainVideo);
+        return this.processStreamAudio(stream);
       });
     } catch (error) {
       console.error('Error updating stream:', error);
@@ -224,16 +205,21 @@ export class Recastra {
     }
   }
 
-  /**
-   * Helper method to handle stream updates while preserving recording state
-   * @param updateFn - Function that performs the stream update
-   */
+  /** Applies audio processing if the stream has audio tracks, stores result either way */
+  private processStreamAudio(stream: MediaStream): MediaStream {
+    if (stream.getAudioTracks().length > 0) {
+      this.processedStream = this.audioProcessor.processAudioStream(stream);
+      return this.processedStream;
+    }
+    this.processedStream = stream;
+    return stream;
+  }
+
+  /** Handles stream swaps while preserving recording state */
   private async handleStreamUpdate(updateFn: () => Promise<MediaStream>): Promise<void> {
-    // Store the current state
-    const currentState = this.recordingManager.getState() as RecordingState;
+    const currentState = this.recordingManager.getState();
     const wasActive = currentState === 'recording' || currentState === 'paused';
 
-    // Stop recording if active
     if (wasActive) {
       await this.stop();
     }
@@ -256,7 +242,7 @@ export class Recastra {
    */
   public getStream(): MediaStream {
     const stream = this.streamManager.getStream();
-    validateStream(stream, 'Stream not initialized. Call init() first.');
+    validateStream(stream, ERR_STREAM_NOT_INIT);
     // After validation, we know stream is not null
     // Return the processed stream if it exists, otherwise return the original stream
     return this.processedStream || (stream as MediaStream);
@@ -299,13 +285,9 @@ export class Recastra {
    * @returns The recording blob
    */
   public save(fileName?: string, download: boolean = true): Blob {
-    return this.getRecordingBlobAndPerform('No recording available. Record something first.', {
+    return this.getRecordingBlobAndPerform(ERR_NO_RECORDING, {
       execute: (blob: Blob) => {
-        const mimeType =
-          this.recordingManager.getState() === 'inactive'
-            ? 'video/webm'
-            : (this.recordingManager as unknown as { mimeType: string }).mimeType;
-
+        const mimeType = this.recordingManager.getMimeType();
         this.fileManager.save(blob, mimeType, fileName, download);
         return blob;
       }
@@ -320,7 +302,7 @@ export class Recastra {
    * @returns Promise resolving to the audio blob
    */
   public async saveAsAudio(fileName?: string, download: boolean = true): Promise<Blob> {
-    return this.getRecordingBlobAndPerform('No recording available. Record something first.', {
+    return this.getRecordingBlobAndPerform(ERR_NO_RECORDING, {
       execute: (blob: Blob) => this.fileManager.saveAsAudio(blob, fileName, download)
     });
   }
@@ -332,7 +314,7 @@ export class Recastra {
    * @returns Promise resolving to the server Response
    */
   public async upload(url: string, formFieldName: string = 'file'): Promise<Response> {
-    return this.getRecordingBlobAndPerform('No recording available. Record something first.', {
+    return this.getRecordingBlobAndPerform(ERR_NO_RECORDING, {
       execute: (blob: Blob) => this.fileManager.upload(blob, url, formFieldName)
     });
   }
@@ -344,7 +326,7 @@ export class Recastra {
    * @returns The created video element
    */
   public replay(container?: HTMLElement, options?: MediaElementOptions): HTMLVideoElement {
-    return this.getRecordingBlobAndPerform('No recording available. Record something first.', {
+    return this.getRecordingBlobAndPerform(ERR_NO_RECORDING, {
       execute: (blob: Blob) => createVideoElement(blob, container, options)
     });
   }
@@ -356,7 +338,7 @@ export class Recastra {
    * @returns The created audio element
    */
   public replayAudio(container?: HTMLElement, options?: MediaElementOptions): HTMLAudioElement {
-    return this.getRecordingBlobAndPerform('No recording available. Record something first.', {
+    return this.getRecordingBlobAndPerform(ERR_NO_RECORDING, {
       execute: (blob: Blob) => createAudioElement(blob, container, options)
     });
   }
@@ -380,15 +362,14 @@ export class Recastra {
   /**
    * Cleans up resources when the recorder is no longer needed
    */
-  public dispose(): void {
-    // Stop the processed stream if it exists
+  public async dispose(): Promise<void> {
     if (this.processedStream) {
       stopMediaStreamTracks(this.processedStream);
       this.processedStream = null;
     }
 
     this.streamManager.dispose();
-    this.audioProcessor.dispose();
+    await this.audioProcessor.dispose();
     this.recordingManager.dispose();
   }
 }

@@ -41,9 +41,8 @@ describe('Recastra', () => {
     recastra['fileManager'] = mockFileManager;
   });
 
-  afterEach(() => {
-    // Clean up after each test
-    recastra.dispose();
+  afterEach(async () => {
+    await recastra.dispose();
   });
 
   describe('constructor', () => {
@@ -351,16 +350,13 @@ describe('Recastra', () => {
 
   describe('save', () => {
     it('should save the recording with download=true by default', () => {
-      // Mock the getRecordingBlob method
       const mockBlob = new Blob(['test data']);
       mockRecordingManager.getRecordingBlob.mockReturnValue(mockBlob);
-      mockRecordingManager.getState.mockReturnValue('inactive');
+      mockRecordingManager.getMimeType.mockReturnValue('video/webm');
       mockFileManager.save.mockReturnValue(mockBlob);
 
-      // Save the recording
       const returnedBlob = recastra.save('test.webm');
 
-      // Verify that save was called on the file manager with download=true
       expect(mockFileManager.save).toHaveBeenCalledWith(mockBlob, 'video/webm', 'test.webm', true);
 
       // Verify that the blob was returned
@@ -368,16 +364,13 @@ describe('Recastra', () => {
     });
 
     it('should save the recording with download=false when specified', () => {
-      // Mock the getRecordingBlob method
       const mockBlob = new Blob(['test data']);
       mockRecordingManager.getRecordingBlob.mockReturnValue(mockBlob);
-      mockRecordingManager.getState.mockReturnValue('inactive');
+      mockRecordingManager.getMimeType.mockReturnValue('video/webm');
       mockFileManager.save.mockReturnValue(mockBlob);
 
-      // Save the recording with download=false
       const returnedBlob = recastra.save('test.webm', false);
 
-      // Verify that save was called on the file manager with download=false
       expect(mockFileManager.save).toHaveBeenCalledWith(mockBlob, 'video/webm', 'test.webm', false);
 
       // Verify that the blob was returned
@@ -632,11 +625,11 @@ describe('Recastra', () => {
   });
 
   describe('dispose', () => {
-    it('should dispose of all resources', () => {
-      // Dispose
-      recastra.dispose();
+    it('should dispose of all resources', async () => {
+      mockAudioProcessor.dispose.mockResolvedValue(undefined);
 
-      // Verify that dispose was called on all component managers
+      await recastra.dispose();
+
       expect(mockStreamManager.dispose).toHaveBeenCalled();
       expect(mockAudioProcessor.dispose).toHaveBeenCalled();
       expect(mockRecordingManager.dispose).toHaveBeenCalled();

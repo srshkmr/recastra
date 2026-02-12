@@ -10,6 +10,9 @@ import {
   stopRecorderWithTimeout,
   updateLastDataReceived
 } from '../utils/recorder';
+import { DATA_TIMESLICE_MS, ERROR_RECOVERY_DELAY_MS } from '../constants';
+import { ERR_STREAM_NOT_PROVIDED, ERR_NOT_RECORDING } from '../errors';
+import type { RecordingState } from '../types';
 
 /**
  * Interface for RecordingManager options
@@ -76,108 +79,86 @@ export class RecordingManager {
     }
   }
 
-  /**
-   * Starts recording with optimized settings for continuous audio capture
-   * @param stream - The MediaStream to record
-   */
+  /** Starts recording the given stream with optimized settings */
   public start(stream: MediaStream): void {
-    validateStream(stream, 'Stream not provided. Provide a valid MediaStream.');
-
+    validateStream(stream, ERR_STREAM_NOT_PROVIDED);
     this.chunks = [];
 
-    // Use a void IIFE to handle the operation without changing the return type
-    void ((): void => {
-      try {
-        // Create the MediaRecorder with optimized options
-        this.mediaRecorder = createOptimizedRecorder(
-          stream,
-          this.mimeType,
-          this.recordingOptions,
-          this.audioOnly
-        );
+    try {
+      this.mediaRecorder = createOptimizedRecorder(
+        stream,
+        this.mimeType,
+        this.recordingOptions,
+        this.audioOnly
+      );
 
-        // Set up a heartbeat to monitor recording health
-        const heartbeatInterval = setupRecordingHeartbeat(this.mediaRecorder);
+      const heartbeatInterval = setupRecordingHeartbeat(this.mediaRecorder);
 
-        // Handle data availability with improved error handling
-        this.mediaRecorder.ondataavailable = (event: BlobEvent): void => {
-          try {
-            updateLastDataReceived(); // Update timestamp
+      this.mediaRecorder.ondataavailable = (event: BlobEvent): void => {
+        try {
+          updateLastDataReceived();
 
-            if (event.data && event.data.size > 0) {
-              this.chunks.push(event.data);
-
-              // Debug logging can be enabled by setting a flag in the constructor if needed
-              // console.warn(`Received data chunk: ${event.data.size} bytes`);
-            } else if (event.data && event.data.size === 0) {
-              console.warn('Received empty data chunk from MediaRecorder');
-            }
-          } catch (dataError) {
-            console.error('Error processing media data:', dataError);
-
-            // Try to recover by requesting more data
-            try {
-              if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-                this.mediaRecorder.requestData();
-              }
-            } catch (recoveryError) {
-              console.warn('Failed to request additional data during recovery:', recoveryError);
-            }
+          if (event.data && event.data.size > 0) {
+            this.chunks.push(event.data);
+          } else if (event.data && event.data.size === 0) {
+            console.warn('Received empty data chunk from MediaRecorder');
           }
-        };
+        } catch (dataError) {
+          console.error('Error processing media data:', dataError);
 
-        // Enhanced error handling for MediaRecorder
-        this.mediaRecorder.onerror = (event: Event): void => {
-          console.error('MediaRecorder error:', event);
-
-          // Try to recover from the error
           try {
-            // Clear the heartbeat interval
-            clearInterval(heartbeatInterval);
-
-            // If we have chunks already, try to continue with what we have
-            if (this.chunks.length > 0) {
-              console.warn('Attempting to recover from MediaRecorder error...');
-
-              // If the recorder is in a bad state, recreate it
-              if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-                try {
-                  this.mediaRecorder.stop();
-                } catch (stopError) {
-                  console.warn('Error stopping failed MediaRecorder:', stopError);
-                }
-              }
-
-              // Try to restart recording
-              setTimeout((): void => {
-                try {
-                  this.start(stream);
-                  console.warn('Successfully recovered from MediaRecorder error');
-                } catch (restartError) {
-                  console.error('Failed to restart recording after error:', restartError);
-                }
-              }, 500);
+            if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+              this.mediaRecorder.requestData();
             }
           } catch (recoveryError) {
-            console.error('Error during MediaRecorder error recovery:', recoveryError);
+            console.warn('Failed to request additional data during recovery:', recoveryError);
           }
-        };
+        }
+      };
 
-        // Handle recorder stopping unexpectedly
-        this.mediaRecorder.onstop = (): void => {
-          // Clear the heartbeat interval
+      this.mediaRecorder.onerror = (event: Event): void => {
+        console.error('MediaRecorder error:', event);
+
+        try {
           clearInterval(heartbeatInterval);
-        };
 
-        // Start recording with smaller timeslice for more frequent data collection
-        // This helps ensure audio data is captured continuously and reduces the chance of gaps
-        this.mediaRecorder.start(100); // Fire ondataavailable every 100ms for smoother audio
+          if (this.chunks.length > 0) {
+            console.warn('Attempting to recover from MediaRecorder error...');
 
-        console.warn('MediaRecorder started with optimized settings');
-      } catch (error) {
-        console.error('Error starting recording:', error);
-      }
-    })();
+            if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+              try {
+                this.mediaRecorder.stop();
+              } catch (stopError) {
+                console.warn('Error stopping failed MediaRecorder:', stopError);
+              }
+            }
+
+            setTimeout((): void => {
+              try {
+                this.start(stream);
+                console.info('Successfully recovered from MediaRecorder error');
+              } catch (restartError) {
+                console.error('Failed to restart recording after error:', restartError);
+              }
+            }, ERROR_RECOVERY_DELAY_MS);
+          }
+        } catch (recoveryError) {
+          console.error('Error during MediaRecorder error recovery:', recoveryError);
+        }
+      };
+
+      this.mediaRecorder.onstop = (): void => {
+        clearInterval(heartbeatInterval);
+      };
+
+      this.mediaRecorder.start(DATA_TIMESLICE_MS);
+      console.info('MediaRecorder started with optimized settings');
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      throw new Error(
+        `Failed to start recording: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   /**
@@ -186,7 +167,7 @@ export class RecordingManager {
    */
   public stop(): Promise<Blob> {
     if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
-      return Promise.reject(new Error('Recording not in progress'));
+      return Promise.reject(new Error(ERR_NOT_RECORDING));
     }
 
     return safeExecuteAsync(async () => {
@@ -231,33 +212,27 @@ export class RecordingManager {
     }
   }
 
-  /**
-   * Gets the current recording state
-   * @returns The current recording state ('inactive', 'recording', or 'paused')
-   */
-  public getState(): string {
+  /** Returns the current recording state */
+  public getState(): RecordingState {
     return this.mediaRecorder ? this.mediaRecorder.state : 'inactive';
   }
 
-  /**
-   * Gets the recorded blob
-   * @returns The recorded blob or null if no recording is available
-   */
+  /** Returns the MIME type used for recording */
+  public getMimeType(): string {
+    return this.mimeType;
+  }
+
+  /** Returns the recorded blob, or null if nothing has been recorded yet */
   public getRecordingBlob(): Blob | null {
     return this.recordingBlob;
   }
 
-  /**
-   * Gets the recorded chunks
-   * @returns The recorded chunks
-   */
+  /** Returns the raw recorded chunks */
   public getChunks(): Blob[] {
     return this.chunks;
   }
 
-  /**
-   * Disposes of the RecordingManager and releases resources
-   */
+  /** Releases resources held by this manager */
   public dispose(): void {
     this.mediaRecorder = null;
     this.chunks = [];

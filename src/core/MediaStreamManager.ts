@@ -9,6 +9,8 @@ import {
   createAudioConstraints
 } from '../utils/media';
 import { executeWithTimeout, safeExecuteAsync } from '../utils/error';
+import { STREAM_INIT_TIMEOUT_MS, TRACK_INIT_DELAY_MS } from '../constants';
+import { ERR_MEDIA_TIMEOUT } from '../errors';
 
 /**
  * Interface for MediaStreamManager options
@@ -32,9 +34,7 @@ export class MediaStreamManager {
    * @param options - Configuration options
    */
   constructor(options?: MediaStreamManagerOptions) {
-    if (options?.audioOnly) {
-      this.audioOnly = options.audioOnly;
-    }
+    this.audioOnly = options?.audioOnly ?? false;
   }
 
   /**
@@ -56,15 +56,13 @@ export class MediaStreamManager {
       // Prepare constraints based on audioOnly setting
       const preparedConstraints = this.prepareConstraints(constraints);
 
-      // Request the media stream with a timeout to prevent hanging
       this.stream = await executeWithTimeout(
         () => navigator.mediaDevices.getUserMedia(preparedConstraints),
-        10000,
-        'Media access timeout - user may not have granted permissions'
+        STREAM_INIT_TIMEOUT_MS,
+        ERR_MEDIA_TIMEOUT
       );
 
-      // Log success with track information for debugging
-      console.warn(
+      console.info(
         `Stream initialized with ${this.stream.getAudioTracks().length} audio tracks and ${this.stream.getVideoTracks().length} video tracks`
       );
 
@@ -137,8 +135,7 @@ export class MediaStreamManager {
           // Add new audio tracks to existing stream
           addTracksToStream(audioStream, this.stream, 'audio');
 
-          // Small delay to ensure audio tracks are properly initialized
-          await new Promise<void>(resolve => setTimeout(resolve, 100));
+          await new Promise<void>(resolve => setTimeout(resolve, TRACK_INIT_DELAY_MS));
         } else {
           // If no video tracks, get a completely new stream
           if (this.stream) {

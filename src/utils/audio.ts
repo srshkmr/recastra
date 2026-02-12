@@ -3,6 +3,12 @@
  */
 
 import { addTracksToStream } from './media';
+import {
+  HIGH_SAMPLE_RATE,
+  COMPRESSOR,
+  GAIN_RAMP_DURATION,
+  NOISE_FILTER_FREQUENCY
+} from '../constants';
 
 /**
  * Converts an AudioBuffer to a WAV Blob
@@ -86,10 +92,9 @@ function writeString(view: DataView, offset: number, string: string): void {
  * @returns The created AudioContext
  */
 export function createOptimizedAudioContext(options: AudioContextOptions = {}): AudioContext {
-  // Create a new AudioContext with optimal settings for audio processing
   return new AudioContext({
-    latencyHint: 'interactive', // Optimize for lower latency
-    sampleRate: 48000, // Use high sample rate for better quality
+    latencyHint: 'interactive',
+    sampleRate: HIGH_SAMPLE_RATE,
     ...options
   });
 }
@@ -101,13 +106,12 @@ export function createOptimizedAudioContext(options: AudioContextOptions = {}): 
  * @returns The created GainNode
  */
 export function createGainNode(audioContext: AudioContext, gainValue: number): GainNode {
-  // Create a GainNode for volume control with smoothing
   const gainNode = audioContext.createGain();
 
-  // Set the gain value with a slight ramp to prevent clicks/pops
+  // Ramp from 0 to target to prevent clicks/pops
   const currentTime = audioContext.currentTime;
   gainNode.gain.setValueAtTime(0, currentTime);
-  gainNode.gain.linearRampToValueAtTime(gainValue, currentTime + 0.05);
+  gainNode.gain.linearRampToValueAtTime(gainValue, currentTime + GAIN_RAMP_DURATION);
 
   return gainNode;
 }
@@ -120,12 +124,11 @@ export function createGainNode(audioContext: AudioContext, gainValue: number): G
  */
 export function createNoiseFilter(
   audioContext: AudioContext,
-  frequency: number = 8000
+  frequency: number = NOISE_FILTER_FREQUENCY
 ): BiquadFilterNode {
-  // Create a BiquadFilterNode for noise reduction
   const filterNode = audioContext.createBiquadFilter();
   filterNode.type = 'lowpass';
-  filterNode.frequency.value = frequency; // Reduce high-frequency noise
+  filterNode.frequency.value = frequency;
   return filterNode;
 }
 
@@ -135,13 +138,12 @@ export function createNoiseFilter(
  * @returns The created DynamicsCompressorNode
  */
 export function createCompressor(audioContext: AudioContext): DynamicsCompressorNode {
-  // Create a compressor to even out volume levels and prevent clipping
   const compressorNode = audioContext.createDynamicsCompressor();
-  compressorNode.threshold.value = -24;
-  compressorNode.knee.value = 30;
-  compressorNode.ratio.value = 12;
-  compressorNode.attack.value = 0.003;
-  compressorNode.release.value = 0.25;
+  compressorNode.threshold.value = COMPRESSOR.threshold;
+  compressorNode.knee.value = COMPRESSOR.knee;
+  compressorNode.ratio.value = COMPRESSOR.ratio;
+  compressorNode.attack.value = COMPRESSOR.attack;
+  compressorNode.release.value = COMPRESSOR.release;
   return compressorNode;
 }
 

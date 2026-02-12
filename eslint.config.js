@@ -12,8 +12,32 @@ const rawTypeCheckingConfig = tsConfigs['recommended-requiring-type-checking'];
 const { extends: _removedExtends, ...typeCheckingConfig } = rawTypeCheckingConfig;
 
 export default [
+  {
+    ignores: [
+      '.eslintrc.js',
+      'src/__tests__/.eslintrc.js',
+      'build.js',
+      'jest.setup.js',
+      'minify.js',
+      'transform-modules.js',
+      'eslint.config.js',
+      'recastra.d.ts',
+      'dist/**'
+    ]
+  },
   js.configs.recommended,
-  typeCheckingConfig,
+  {
+    rules: {
+      'preserve-caught-error': 'off'
+    }
+  },
+  {
+    files: ['**/*.ts'],
+    plugins: {
+      '@typescript-eslint': tsEsLintPlugin
+    },
+    ...typeCheckingConfig
+  },
   {
     files: ['**/*.ts'],
     ignores: ['**/*.test.ts', 'dist/**', 'examples/**/*.ts', 'recastra.d.ts'],

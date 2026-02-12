@@ -2,45 +2,44 @@
  * Recorder utilities for Recastra
  */
 
-/**
- * Sets up a heartbeat to monitor recording health
- * @param mediaRecorder - The MediaRecorder to monitor
- * @param interval - The interval in milliseconds between heartbeats
- * @returns The interval ID for the heartbeat
- */
+import {
+  AUDIO_BITRATE,
+  VIDEO_BITRATE,
+  COMBINED_BITRATE,
+  HEARTBEAT_INTERVAL_MS,
+  HEARTBEAT_STALL_MS,
+  RECORDER_STOP_TIMEOUT_MS
+} from '../constants';
+import { ERR_NO_DATA } from '../errors';
+
+// tracks when we last received data, used by heartbeat to detect stalls
+let lastDataTimestamp = Date.now();
+
 export function setupRecordingHeartbeat(
   mediaRecorder: MediaRecorder,
-  interval: number = 2000
+  interval: number = HEARTBEAT_INTERVAL_MS
 ): ReturnType<typeof setInterval> {
-  // Track the last time we received data to detect stalls
-  let lastDataReceived = Date.now();
+  lastDataTimestamp = Date.now();
 
-  // Set up a heartbeat to monitor recording health
   return setInterval((): void => {
-    // If it's been more than 1 second since we received data, request data
-    if (
-      Date.now() - lastDataReceived > 1000 &&
-      mediaRecorder &&
-      mediaRecorder.state === 'recording'
-    ) {
+    const elapsed = Date.now() - lastDataTimestamp;
+    if (elapsed > HEARTBEAT_STALL_MS && mediaRecorder && mediaRecorder.state === 'recording') {
       try {
-        // Request data to ensure we're still capturing
         mediaRecorder.requestData();
-        console.warn('Heartbeat: requested data from MediaRecorder');
-      } catch (heartbeatError) {
-        console.warn('Heartbeat error:', heartbeatError);
+        console.info('Heartbeat: requested data from MediaRecorder');
+      } catch (err) {
+        console.warn('Heartbeat error:', err);
       }
     }
   }, interval);
 }
 
-/**
- * Updates the last data received timestamp
- * @param timestamp - The timestamp to set (defaults to current time)
- * @returns The updated timestamp
- */
-export function updateLastDataReceived(timestamp: number = Date.now()): number {
-  return timestamp;
+export function updateLastDataReceived(timestamp: number = Date.now()): void {
+  lastDataTimestamp = timestamp;
+}
+
+export function getLastDataReceived(): number {
+  return lastDataTimestamp;
 }
 
 /**
@@ -57,15 +56,12 @@ export function createOptimizedRecorder(
   options: MediaRecorderOptions = {},
   audioOnly: boolean = false
 ): MediaRecorder {
-  // Comprehensive default options for optimal audio quality and stability
   const defaultOptions = {
-    audioBitsPerSecond: 128000,
-    videoBitsPerSecond: audioOnly ? undefined : 2500000,
-    // Use lower video bitrate for better stability if audio is the priority
-    bitsPerSecond: audioOnly ? 128000 : 2800000
+    audioBitsPerSecond: AUDIO_BITRATE,
+    videoBitsPerSecond: audioOnly ? undefined : VIDEO_BITRATE,
+    bitsPerSecond: audioOnly ? AUDIO_BITRATE : COMBINED_BITRATE
   };
 
-  // Create the MediaRecorder with optimized options
   return new MediaRecorder(stream, {
     mimeType,
     ...defaultOptions,
@@ -85,7 +81,7 @@ export function stopRecorderWithTimeout(
   mediaRecorder: MediaRecorder,
   chunks: Blob[],
   mimeType: string,
-  timeoutMs: number = 3000
+  timeoutMs: number = RECORDER_STOP_TIMEOUT_MS
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     try {
@@ -98,23 +94,19 @@ export function stopRecorderWithTimeout(
       const timeoutId = setTimeout((): void => {
         console.warn('MediaRecorder stop timeout - forcing completion');
         if (chunks.length > 0) {
-          const recordingBlob = new Blob(chunks, { type: mimeType });
-          resolve(recordingBlob);
+          resolve(new Blob(chunks, { type: mimeType }));
         } else {
-          reject(new Error('No data collected during recording'));
+          reject(new Error(ERR_NO_DATA));
         }
       }, timeoutMs);
 
       mediaRecorder.onstop = (): void => {
         clearTimeout(timeoutId);
 
-        // Ensure we have valid chunks before creating the blob
         if (chunks.length > 0) {
-          // Create the blob with proper MIME type and codecs
-          const recordingBlob = new Blob(chunks, { type: mimeType });
-          resolve(recordingBlob);
+          resolve(new Blob(chunks, { type: mimeType }));
         } else {
-          reject(new Error('No data collected during recording'));
+          reject(new Error(ERR_NO_DATA));
         }
       };
 

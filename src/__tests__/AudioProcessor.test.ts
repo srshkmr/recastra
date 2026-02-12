@@ -10,9 +10,8 @@ describe('AudioProcessor', () => {
     jest.clearAllMocks();
   });
 
-  afterEach(() => {
-    // Clean up after each test
-    audioProcessor.dispose();
+  afterEach(async () => {
+    await audioProcessor.dispose();
   });
 
   describe('constructor', () => {
@@ -34,10 +33,10 @@ describe('AudioProcessor', () => {
       expect(audioProcessor['audioGain']).toBe(1.5);
     });
 
-    it('should throw error if gain is less than or equal to 0', () => {
-      // For synchronous functions, use regular expect().toThrow() instead of await expect().rejects.toThrow()
+    it('should throw error for invalid gain values', () => {
       expect(() => audioProcessor.setAudioGain(0)).toThrow('Gain must be greater than 0');
       expect(() => audioProcessor.setAudioGain(-1)).toThrow('Gain must be greater than 0');
+      expect(() => audioProcessor.setAudioGain(NaN)).toThrow('Gain must be greater than 0');
     });
 
     it('should update gain node value if it exists', () => {
@@ -112,40 +111,35 @@ describe('AudioProcessor', () => {
     });
 
     it('should handle errors and return the original stream', () => {
-      // Create a mock stream
       const mockStream = {
-        getAudioTracks: jest.fn().mockImplementation(() => {
-          throw new Error('Test error');
-        })
-      };
+        getAudioTracks: jest.fn().mockReturnValue([])
+      } as unknown as MediaStream;
 
-      // Process the stream
-      const result = audioProcessor.processAudioStream(mockStream as unknown as MediaStream);
+      // Force an error by making createOptimizedAudioContext throw
+      jest.spyOn(audioUtils, 'createOptimizedAudioContext').mockImplementation(() => {
+        throw new Error('AudioContext not supported');
+      });
 
-      // Verify that the original stream was returned
+      const result = audioProcessor.processAudioStream(mockStream);
+
       expect(result).toBe(mockStream);
     });
   });
 
   describe('dispose', () => {
-    it('should clean up resources', () => {
-      // Create a mock audio context
+    it('should clean up resources', async () => {
       const mockAudioContext = {
-        close: jest.fn().mockResolvedValue(undefined)
+        close: jest.fn().mockResolvedValue(undefined),
+        state: 'running'
       };
       audioProcessor['audioContext'] = mockAudioContext as unknown as AudioContext;
 
-      // Create a mock gain node
       const mockGainNode = {};
       audioProcessor['gainNode'] = mockGainNode as unknown as GainNode;
 
-      // Dispose
-      audioProcessor.dispose();
+      await audioProcessor.dispose();
 
-      // Verify that the audio context was closed
       expect(mockAudioContext.close).toHaveBeenCalled();
-
-      // Verify that the references were cleared
       expect(audioProcessor['audioContext']).toBeNull();
       expect(audioProcessor['gainNode']).toBeNull();
     });

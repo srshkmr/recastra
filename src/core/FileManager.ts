@@ -5,6 +5,7 @@
 import { validateBlob } from '../utils/validation';
 import { getFileExtension, downloadBlob } from '../utils/file';
 import { audioBufferToWav } from '../utils/audio';
+import { ERR_NO_BLOB, ERR_INVALID_URL } from '../errors';
 
 /**
  * Interface for FileManager options
@@ -27,9 +28,7 @@ export class FileManager {
    * @param options - Configuration options
    */
   constructor(options?: FileManagerOptions) {
-    if (options?.audioOnly) {
-      this.audioOnly = options.audioOnly;
-    }
+    this.audioOnly = options?.audioOnly ?? false;
   }
 
   /**
@@ -41,7 +40,7 @@ export class FileManager {
    * @returns The recording blob
    */
   public save(blob: Blob, mimeType: string, fileName?: string, download: boolean = true): Blob {
-    validateBlob(blob, 'No recording blob provided.');
+    validateBlob(blob, ERR_NO_BLOB);
 
     // Get the appropriate file extension
     const fileExtension = getFileExtension(mimeType, this.audioOnly);
@@ -63,7 +62,7 @@ export class FileManager {
    * @returns The audio blob
    */
   public async saveAsAudio(blob: Blob, fileName?: string, download: boolean = true): Promise<Blob> {
-    validateBlob(blob, 'No recording blob provided.');
+    validateBlob(blob, ERR_NO_BLOB);
 
     try {
       const audioMimeType = 'audio/wav';
@@ -114,7 +113,17 @@ export class FileManager {
    * @returns Promise resolving to the server Response
    */
   public async upload(blob: Blob, url: string, formFieldName: string = 'file'): Promise<Response> {
-    validateBlob(blob, 'No recording blob provided.');
+    validateBlob(blob, ERR_NO_BLOB);
+
+    if (!url) {
+      throw new Error(ERR_INVALID_URL);
+    }
+
+    try {
+      new URL(url);
+    } catch {
+      throw new Error(`Invalid upload URL: ${url}`);
+    }
 
     const formData = new FormData();
     formData.append(formFieldName, blob);
