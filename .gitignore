@@ -24,3 +24,5 @@ coverage
 *.sln
 *.sw?
 .env
+
+.claude
