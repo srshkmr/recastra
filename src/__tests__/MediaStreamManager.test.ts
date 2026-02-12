@@ -138,7 +138,8 @@ describe('MediaStreamManager', () => {
       // Create a mock stream with video tracks
       const mockVideoTrack = {
         kind: 'video',
-        stop: jest.fn()
+        stop: jest.fn(),
+        getSettings: jest.fn().mockReturnValue({ deviceId: 'default-camera' })
       } as unknown as MediaStreamTrack;
 
       const mockStream = {
@@ -161,6 +162,134 @@ describe('MediaStreamManager', () => {
           audio: expect.anything(),
           video: false
         })
+      );
+    });
+
+    it('should update video tracks when camera device changes', async () => {
+      // Mock removeVideoTracks to avoid actual track removal issues
+      jest.spyOn(mediaUtils, 'removeVideoTracks').mockImplementation(() => {});
+      jest.spyOn(mediaUtils, 'addTracksToStream').mockImplementation(() => {});
+
+      // Create a mock video track with settings
+      const mockVideoTrack = {
+        kind: 'video',
+        stop: jest.fn(),
+        getSettings: jest.fn().mockReturnValue({ deviceId: 'old-camera-id' })
+      } as unknown as MediaStreamTrack;
+
+      const mockStream = {
+        getAudioTracks: jest.fn().mockReturnValue([]),
+        getVideoTracks: jest.fn().mockReturnValue([mockVideoTrack]),
+        getTracks: jest.fn().mockReturnValue([mockVideoTrack]),
+        removeTrack: jest.fn(),
+        addTrack: jest.fn()
+      } as unknown as MediaStream;
+
+      // Set the mock stream directly
+      mediaStreamManager['stream'] = mockStream;
+
+      // Update with a different camera device
+      const newConstraints = {
+        audio: false,
+        video: { deviceId: { exact: 'new-camera-id' } }
+      };
+      await mediaStreamManager.updateStream(newConstraints, true);
+
+      // Verify that getUserMedia was called with video-only constraints for the new camera
+      expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith(
+        expect.objectContaining({
+          audio: false,
+          video: { deviceId: { exact: 'new-camera-id' } }
+        })
+      );
+
+      // Verify removeVideoTracks was called
+      expect(mediaUtils.removeVideoTracks).toHaveBeenCalled();
+
+      // Verify addTracksToStream was called for video
+      expect(mediaUtils.addTracksToStream).toHaveBeenCalledWith(
+        expect.anything(),
+        mockStream,
+        'video'
+      );
+    });
+
+    it('should not update video tracks if same device is requested', async () => {
+      jest.spyOn(mediaUtils, 'removeVideoTracks').mockImplementation(() => {});
+
+      // Create a mock video track with settings matching the requested device
+      const mockVideoTrack = {
+        kind: 'video',
+        stop: jest.fn(),
+        getSettings: jest.fn().mockReturnValue({ deviceId: 'same-camera-id' })
+      } as unknown as MediaStreamTrack;
+
+      const mockStream = {
+        getAudioTracks: jest.fn().mockReturnValue([]),
+        getVideoTracks: jest.fn().mockReturnValue([mockVideoTrack]),
+        getTracks: jest.fn().mockReturnValue([mockVideoTrack]),
+        removeTrack: jest.fn(),
+        addTrack: jest.fn()
+      } as unknown as MediaStream;
+
+      mediaStreamManager['stream'] = mockStream;
+
+      // Update with the same camera device
+      const newConstraints = {
+        audio: false,
+        video: { deviceId: { exact: 'same-camera-id' } }
+      };
+      await mediaStreamManager.updateStream(newConstraints, true);
+
+      // Verify that removeVideoTracks was NOT called since device is the same
+      expect(mediaUtils.removeVideoTracks).not.toHaveBeenCalled();
+    });
+
+    it('should update both audio and video tracks when both constraints change', async () => {
+      jest.spyOn(mediaUtils, 'removeVideoTracks').mockImplementation(() => {});
+      jest.spyOn(mediaUtils, 'addTracksToStream').mockImplementation(() => {});
+
+      // Create mock tracks
+      const mockVideoTrack = {
+        kind: 'video',
+        stop: jest.fn(),
+        getSettings: jest.fn().mockReturnValue({ deviceId: 'old-camera-id' })
+      } as unknown as MediaStreamTrack;
+
+      const mockAudioTrack = {
+        kind: 'audio',
+        stop: jest.fn()
+      } as unknown as MediaStreamTrack;
+
+      const mockStream = {
+        getAudioTracks: jest.fn().mockReturnValue([mockAudioTrack]),
+        getVideoTracks: jest.fn().mockReturnValue([mockVideoTrack]),
+        getTracks: jest.fn().mockReturnValue([mockAudioTrack, mockVideoTrack]),
+        removeTrack: jest.fn(),
+        addTrack: jest.fn()
+      } as unknown as MediaStream;
+
+      mediaStreamManager['stream'] = mockStream;
+
+      // Update both audio and video constraints
+      const newConstraints = {
+        audio: { deviceId: { exact: 'new-mic-id' } },
+        video: { deviceId: { exact: 'new-camera-id' } }
+      };
+      await mediaStreamManager.updateStream(newConstraints, true);
+
+      // Verify both audio and video were updated
+      expect(mediaUtils.removeAudioTracks).toHaveBeenCalled();
+      expect(mediaUtils.removeVideoTracks).toHaveBeenCalled();
+      expect(mediaUtils.addTracksToStream).toHaveBeenCalledWith(
+        expect.anything(),
+        mockStream,
+        'audio'
+      );
+      expect(mediaUtils.addTracksToStream).toHaveBeenCalledWith(
+        expect.anything(),
+        mockStream,
+        'video'
       );
     });
   });

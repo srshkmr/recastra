@@ -99,6 +99,19 @@ export function removeAudioTracks(stream: MediaStream): void {
 }
 
 /**
+ * Removes video tracks from a MediaStream
+ * @param stream - The MediaStream to remove video tracks from
+ */
+export function removeVideoTracks(stream: MediaStream): void {
+  if (stream) {
+    stream.getVideoTracks().forEach((track: MediaStreamTrack): void => {
+      stream.removeTrack(track);
+      track.stop();
+    });
+  }
+}
+
+/**
  * Adds tracks from one MediaStream to another
  * @param sourceStream - The source MediaStream
  * @param targetStream - The target MediaStream

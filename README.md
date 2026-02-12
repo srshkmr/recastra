@@ -192,27 +192,35 @@ Features:
 - Validates recording data before creating the final blob
 
 ### `updateStream(constraints: MediaStreamConstraints, maintainVideo?: boolean): Promise<void>`
-Dynamically updates the recording stream with new audio/video constraints with enhanced continuity. The `maintainVideo` parameter (default: true) controls whether to maintain the video stream when changing audio inputs.
+Dynamically updates the stream with new audio/video constraints. When `maintainVideo` is true (default), tracks are replaced in-place so any preview element using `getStream()` updates automatically.
 
 Features:
-- Preserves recording continuity by maintaining previous audio chunks when switching sources
-- Properly removes existing audio tracks before adding new ones to prevent conflicts
-- Ensures explicit audio quality settings are applied when changing audio sources
-- Includes stabilization delays to ensure smooth transitions between audio sources
-- Provides comprehensive error handling with detailed error messages
+- Swaps audio/video tracks without creating a new stream object
+- Detects device changes and only updates tracks when necessary
+- Preserves recording continuity when switching devices
+- Includes stabilization delays for smooth transitions
 
 ```typescript
-// Update just the audio source without stopping video
+// Switch microphone
 await recorder.updateStream({ 
   audio: { deviceId: { exact: 'new-microphone-id' } },
   video: true
 });
 
-// Completely replace both audio and video
+// Switch camera (preview updates automatically)
+await recorder.updateStream({
+  audio: true,
+  video: { deviceId: { exact: 'new-camera-id' } }
+});
+
+// Switch both at once
 await recorder.updateStream({
   audio: { deviceId: { exact: 'new-microphone-id' } },
   video: { deviceId: { exact: 'new-camera-id' } }
-}, false);
+});
+
+// Force complete stream replacement
+await recorder.updateStream({ audio: true, video: true }, false);
 ```
 
 ### `getStream(): MediaStream`

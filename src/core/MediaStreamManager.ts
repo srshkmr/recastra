@@ -5,6 +5,7 @@
 import {
   stopMediaStreamTracks,
   removeAudioTracks,
+  removeVideoTracks,
   addTracksToStream,
   createAudioConstraints
 } from '../utils/media';
@@ -115,46 +116,63 @@ export class MediaStreamManager {
     maintainVideo: boolean = true
   ): Promise<MediaStream> {
     return safeExecuteAsync(async () => {
-      // If we want to maintain the video stream when changing audio inputs
-      if (maintainVideo && this.stream && constraints.audio && !this.audioOnly) {
-        // Get current video tracks
-        const videoTracks = this.stream.getVideoTracks();
-
-        if (videoTracks.length > 0) {
-          // Remove all existing audio tracks from the stream
-          removeAudioTracks(this.stream);
-
-          // Get new audio stream with explicit audio constraints
-          const audioConstraints = {
-            audio: createAudioConstraints(constraints.audio, false),
-            video: false
-          };
-
-          let audioStream = await navigator.mediaDevices.getUserMedia(audioConstraints);
-
-          // Add new audio tracks to existing stream
-          addTracksToStream(audioStream, this.stream, 'audio');
-
-          await new Promise<void>(resolve => setTimeout(resolve, TRACK_INIT_DELAY_MS));
-        } else {
-          // If no video tracks, get a completely new stream
-          if (this.stream) {
-            stopMediaStreamTracks(this.stream);
-          }
-          this.stream = await this.initStream(constraints);
-        }
-      } else {
-        // Stop all tracks in the current stream
-        if (this.stream) {
-          stopMediaStreamTracks(this.stream);
-        }
-
-        // Get new stream with updated constraints
+      // Full stream replacement
+      if (!maintainVideo || !this.stream) {
+        if (this.stream) stopMediaStreamTracks(this.stream);
         this.stream = await this.initStream(constraints);
+        return this.stream;
       }
 
+      const videoTracks = this.stream.getVideoTracks();
+
+      // Handle audio track updates
+      if (constraints.audio && !this.audioOnly) {
+        removeAudioTracks(this.stream);
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: createAudioConstraints(constraints.audio, false),
+          video: false
+        });
+        addTracksToStream(audioStream, this.stream, 'audio');
+      }
+
+      // Handle video track updates (check if device changed)
+      if (constraints.video && !this.audioOnly) {
+        const newDeviceId = this.getDeviceId(constraints.video);
+        const currentDeviceId = videoTracks[0]?.getSettings()?.deviceId;
+
+        if (!videoTracks.length || (newDeviceId && newDeviceId !== currentDeviceId)) {
+          removeVideoTracks(this.stream);
+          const videoStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: constraints.video
+          });
+          addTracksToStream(videoStream, this.stream, 'video');
+        }
+      }
+
+      await new Promise<void>(resolve => setTimeout(resolve, TRACK_INIT_DELAY_MS));
       return this.stream;
     }, 'Error updating stream');
+  }
+
+  /** Extracts deviceId from video constraints */
+  private getDeviceId(constraint: boolean | MediaTrackConstraints): string | undefined {
+    if (typeof constraint !== 'object') return undefined;
+
+    const { deviceId } = constraint;
+    if (!deviceId) return undefined;
+    if (typeof deviceId === 'string') return deviceId;
+    if (Array.isArray(deviceId)) return deviceId[0];
+
+    return deviceId.exact
+      ? typeof deviceId.exact === 'string'
+        ? deviceId.exact
+        : deviceId.exact[0]
+      : deviceId.ideal
+        ? typeof deviceId.ideal === 'string'
+          ? deviceId.ideal
+          : deviceId.ideal[0]
+        : undefined;
   }
 
   /**
